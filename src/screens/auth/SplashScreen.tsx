@@ -1,6 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, SIZES } from '../../constants';
@@ -18,12 +17,10 @@ interface Props {
   navigation: SplashScreenNavigationProp;
 }
 
-const { width } = Dimensions.get('window');
-
 const SplashScreen: React.FC<Props> = ({ navigation }) => {
-  const fadeAnim = new Animated.Value(0);
-  const scaleAnim = new Animated.Value(0.8);
-  const { isAuthenticated, initialize, isInitialized } = useAuthStore();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
     Animated.parallel([
@@ -39,29 +36,20 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
         useNativeDriver: true,
       }),
     ]).start();
-
-    initialize();
-  }, []);
+  }, [fadeAnim, scaleAnim]);
 
   useEffect(() => {
-    if (isInitialized) {
-      const timer = setTimeout(() => {
-        if (!isAuthenticated) {
-          navigation.replace('Login');
-        }
-      }, 2000);
+    const timer = setTimeout(() => {
+      if (!isAuthenticated) {
+        navigation.replace('Login');
+      }
+    }, 2000);
 
-      return () => clearTimeout(timer);
-    }
-  }, [isInitialized, isAuthenticated, navigation]);
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, navigation]);
 
   return (
-    <LinearGradient
-      colors={[COLORS.primary, '#059669', '#047857']}
-      style={styles.container}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
+    <View style={styles.root}>
       <StatusBar style="light" />
       <Animated.View
         style={[
@@ -78,19 +66,20 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.appName}>GreenPad</Text>
         <Text style={styles.tagline}>Solar Referral Rewards</Text>
       </Animated.View>
-      
+
       <Animated.View style={[styles.footer, { opacity: fadeAnim }]}>
         <Text style={styles.footerText}>Powering a greener future</Text>
       </Animated.View>
-    </LinearGradient>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#059669',
   },
   logoContainer: {
     alignItems: 'center',

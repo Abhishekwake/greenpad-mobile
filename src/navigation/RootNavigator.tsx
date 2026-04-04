@@ -1,33 +1,39 @@
 import React, { useEffect } from 'react';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
-import { RootStackParamList } from './types';
 import { useAuthStore } from '../stores';
+import { COLORS } from '../constants';
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
-
+/**
+ * Single navigator under NavigationContainer (no nested root stack).
+ * Avoids Android native view prop issues and gesture-handler edge cases.
+ */
 const RootNavigator: React.FC = () => {
   const { isAuthenticated, isInitialized, initialize } = useAuthStore();
 
   useEffect(() => {
-    initialize();
-  }, []);
+    void initialize();
+  }, [initialize]);
 
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'fade',
-      }}
-    >
-      {isAuthenticated ? (
-        <Stack.Screen name="Main" component={MainNavigator} />
-      ) : (
-        <Stack.Screen name="Auth" component={AuthNavigator} />
-      )}
-    </Stack.Navigator>
-  );
+  if (!isInitialized) {
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  return isAuthenticated ? <MainNavigator /> : <AuthNavigator />;
 };
+
+const styles = StyleSheet.create({
+  boot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+});
 
 export default RootNavigator;

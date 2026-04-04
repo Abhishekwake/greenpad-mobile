@@ -1,3 +1,5 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 export type AuthStackParamList = {
   Splash: undefined;
   Login: undefined;
@@ -11,13 +13,13 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
-export type RootStackParamList = {
-  Auth: undefined;
-  Main: undefined;
+export type MainStackParamList = {
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
+  BookSiteVisit: undefined;
 };
 
 declare global {
   namespace ReactNavigation {
-    interface RootParamList extends RootStackParamList {}
+    interface RootParamList extends AuthStackParamList, MainTabParamList, MainStackParamList {}
   }
 }

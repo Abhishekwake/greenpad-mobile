@@ -1,22 +1,473 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  FlatList,
+  Dimensions,
+  Image,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  withDelay,
+  withRepeat,
+  withSequence,
+  runOnJS,
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, SIZES } from '../../constants';
+import type { MainStackParamList } from '../../navigation/types';
 
-const HomeScreen: React.FC = () => {
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = (SCREEN_WIDTH - 48 - 12) / 2;
+
+interface ActionItem {
+  id: string;
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  gradient: string[];
+  onPress: () => void;
+}
+
+interface VideoItem {
+  id: string;
+  title: string;
+  thumbnail: string;
+  duration: string;
+}
+
+const DUMMY_USER = {
+  name: 'Rahul',
+  coins: 2450,
+  notifications: 3,
+};
+
+const VIDEO_ITEMS: VideoItem[] = [
+  {
+    id: '1',
+    title: '5kW Installation in Mumbai',
+    thumbnail: 'https://picsum.photos/400/300?random=1',
+    duration: '2:30',
+  },
+  {
+    id: '2',
+    title: 'Customer Review - Pune',
+    thumbnail: 'https://picsum.photos/400/300?random=2',
+    duration: '1:45',
+  },
+  {
+    id: '3',
+    title: '10kW Commercial Setup',
+    thumbnail: 'https://picsum.photos/400/300?random=3',
+    duration: '3:15',
+  },
+];
+
+const SkeletonBox: React.FC<{ width: number | string; height: number; style?: object }> = ({
+  width,
+  height,
+  style,
+}) => {
+  const opacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.7, { duration: 800 }),
+        withTiming(0.3, { duration: 800 })
+      ),
+      -1,
+      false
+    );
+  }, [opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          width,
+          height,
+          backgroundColor: COLORS.gray[200],
+          borderRadius: 8,
+        },
+        animatedStyle,
+        style,
+      ]}
+    />
+  );
+};
+
+const SkeletonLoader: React.FC = () => {
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <Text style={styles.icon}>🏠</Text>
-        </View>
-        <Text style={styles.title}>Home Screen</Text>
-        <Text style={styles.subtitle}>Coming Soon</Text>
-        <Text style={styles.description}>
-          Your solar dashboard with earnings, referrals, and rewards will appear here.
-        </Text>
+      <View style={[styles.headerGradient, { paddingTop: insets.top + 16 }]}>
+        <SkeletonBox width={180} height={28} style={{ backgroundColor: 'rgba(255,255,255,0.3)' }} />
+        <SkeletonBox width={40} height={40} style={{ borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.3)' }} />
       </View>
+      <View style={styles.contentContainer}>
+        <SkeletonBox width="100%" height={140} style={{ marginBottom: 20, borderRadius: 20 }} />
+        <View style={styles.actionGrid}>
+          {[1, 2, 3, 4].map((i) => (
+            <SkeletonBox key={i} width={CARD_WIDTH} height={100} style={{ borderRadius: 16 }} />
+          ))}
+        </View>
+        <SkeletonBox width="100%" height={80} style={{ marginTop: 20, borderRadius: 16 }} />
+        <SkeletonBox width={160} height={24} style={{ marginTop: 24, marginBottom: 12 }} />
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          {[1, 2, 3].map((i) => (
+            <SkeletonBox key={i} width={200} height={150} style={{ borderRadius: 12 }} />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+};
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+
+const ActionCard: React.FC<{ item: ActionItem; index: number }> = ({ item, index }) => {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    scale.value = withSpring(0.95, { damping: 15, stiffness: 400 });
+  };
+
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
+  };
+
+  const handlePress = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    item.onPress();
+  };
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(index * 100).springify()}
+      style={[styles.actionCardWrapper]}
+    >
+      <AnimatedTouchable
+        style={[animatedStyle]}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={handlePress}
+        activeOpacity={1}
+      >
+        <View style={[styles.actionCard, { backgroundColor: item.gradient[0] }]}>
+          <View style={styles.actionIconContainer}>
+            <Ionicons name={item.icon} size={28} color={COLORS.white} />
+          </View>
+          <Text style={styles.actionTitle}>{item.title}</Text>
+        </View>
+      </AnimatedTouchable>
+    </Animated.View>
+  );
+};
+
+const CoinWalletCard: React.FC<{ coins: number }> = ({ coins }) => {
+  const [displayCoins, setDisplayCoins] = useState(0);
+  const animatedCoins = useSharedValue(0);
+  const cardScale = useSharedValue(1);
+
+  useEffect(() => {
+    animatedCoins.value = withTiming(coins, {
+      duration: 1500,
+      easing: Easing.out(Easing.cubic),
+    });
+
+    const interval = setInterval(() => {
+      const current = Math.round(animatedCoins.value);
+      setDisplayCoins(current);
+      if (current >= coins) {
+        clearInterval(interval);
+        setDisplayCoins(coins);
+      }
+    }, 16);
+
+    return () => clearInterval(interval);
+  }, [coins, animatedCoins]);
+
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: cardScale.value }],
+  }));
+
+  const handlePressIn = () => {
+    cardScale.value = withSpring(0.98, { damping: 15 });
+  };
+
+  const handlePressOut = () => {
+    cardScale.value = withSpring(1, { damping: 15 });
+  };
+
+  const handlePress = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  return (
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <AnimatedTouchable
+        style={[styles.walletCard, cardAnimatedStyle]}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={handlePress}
+        activeOpacity={1}
+      >
+        <View style={styles.walletContent}>
+          <View style={styles.walletLeft}>
+            <Text style={styles.walletLabel}>Your Balance</Text>
+            <View style={styles.coinRow}>
+              <Text style={styles.coinIcon}>🪙</Text>
+              <Text style={styles.coinAmount}>
+                {displayCoins.toLocaleString()}
+              </Text>
+              <Text style={styles.coinLabel}>GreenCoins</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.viewWalletBtn}
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+          >
+            <Text style={styles.viewWalletText}>View Wallet</Text>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.walletDecoration}>
+          <View style={[styles.decorCircle, styles.decorCircle1]} />
+          <View style={[styles.decorCircle, styles.decorCircle2]} />
+        </View>
+      </AnimatedTouchable>
+    </Animated.View>
+  );
+};
+
+const TrustBadge: React.FC = () => {
+  return (
+    <Animated.View entering={FadeInDown.delay(500).springify()}>
+      <View style={styles.trustBadge}>
+        <View style={styles.trustLogoPlaceholder}>
+          <Text style={styles.trustLogoText}>W</Text>
+        </View>
+        <View style={styles.trustContent}>
+          <Text style={styles.trustTitle}>Authorized Waaree Partner</Text>
+          <Text style={styles.trustSubtitle}>500+ Happy Customers</Text>
+        </View>
+        <Ionicons name="shield-checkmark" size={24} color={COLORS.primary} />
+      </View>
+    </Animated.View>
+  );
+};
+
+const VideoCard: React.FC<{ item: VideoItem; index: number }> = ({ item, index }) => {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    scale.value = withSpring(0.95, { damping: 15 });
+  };
+
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 15 });
+  };
+
+  const handlePress = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  return (
+    <Animated.View entering={FadeIn.delay(600 + index * 100)}>
+      <AnimatedTouchable
+        style={[styles.videoCard, animatedStyle]}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={handlePress}
+        activeOpacity={1}
+      >
+        <View style={styles.videoThumbnail}>
+          <View style={styles.videoPlaceholder}>
+            <Ionicons name="sunny" size={40} color={COLORS.secondary} />
+          </View>
+          <View style={styles.playOverlay}>
+            <View style={styles.playButton}>
+              <Ionicons name="play" size={24} color={COLORS.white} />
+            </View>
+          </View>
+          <View style={styles.durationBadge}>
+            <Text style={styles.durationText}>{item.duration}</Text>
+          </View>
+        </View>
+        <Text style={styles.videoTitle} numberOfLines={2}>
+          {item.title}
+        </Text>
+      </AnimatedTouchable>
+    </Animated.View>
+  );
+};
+
+const HomeScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const tabNavigation = useNavigation();
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const openBookSiteVisit = useCallback(() => {
+    const parent = tabNavigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
+    parent?.navigate('BookSiteVisit');
+  }, [tabNavigation]);
+
+  const actionItems = useMemo<ActionItem[]>(
+    () => [
+      {
+        id: '1',
+        title: 'Refer & Earn',
+        icon: 'share-social',
+        gradient: ['#10B981', '#059669'],
+        onPress: () => {},
+      },
+      {
+        id: '2',
+        title: 'Book Site Visit',
+        icon: 'calendar',
+        gradient: ['#3B82F6', '#1D4ED8'],
+        onPress: openBookSiteVisit,
+      },
+      {
+        id: '3',
+        title: 'Watch & Learn',
+        icon: 'play-circle',
+        gradient: ['#8B5CF6', '#6D28D9'],
+        onPress: () => {},
+      },
+      {
+        id: '4',
+        title: 'Rewards Store',
+        icon: 'gift',
+        gradient: ['#F59E0B', '#D97706'],
+        onPress: () => {},
+      },
+    ],
+    [openBookSiteVisit]
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1500);
+  }, []);
+
+  const handleNotificationPress = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  if (isLoading) {
+    return <SkeletonLoader />;
+  }
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+      
+      {/* Header */}
+      <View style={[styles.headerGradient, { paddingTop: insets.top + 16 }]}>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.greeting}>Hello, {DUMMY_USER.name}! 👋</Text>
+            <Text style={styles.subGreeting}>Let's go green today</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.notificationBtn}
+            onPress={handleNotificationPress}
+          >
+            <Ionicons name="notifications-outline" size={24} color={COLORS.white} />
+            {DUMMY_USER.notifications > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationCount}>{DUMMY_USER.notifications}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
+      >
+        {/* Coin Wallet Card */}
+        <CoinWalletCard coins={DUMMY_USER.coins} />
+
+        {/* Action Grid */}
+        <View style={styles.actionGrid}>
+          {actionItems.map((item, index) => (
+            <ActionCard key={item.id} item={item} index={index} />
+          ))}
+        </View>
+
+        {/* Trust Badge */}
+        <TrustBadge />
+
+        {/* Videos Section */}
+        <Animated.View entering={FadeInDown.delay(550).springify()}>
+          <Text style={styles.sectionTitle}>See Real Installations</Text>
+        </Animated.View>
+        
+        <FlatList
+          data={VIDEO_ITEMS}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.videoList}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item, index }) => <VideoCard item={item} index={index} />}
+        />
+
+        {/* Bottom spacing */}
+        <View style={{ height: 100 }} />
+      </ScrollView>
     </View>
   );
 };
@@ -26,46 +477,283 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  content: {
+  headerGradient: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 20,
+    paddingBottom: 60,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  greeting: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.white,
+    marginBottom: 4,
+  },
+  subGreeting: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  notificationBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationCount: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  scrollView: {
+    flex: 1,
+    marginTop: -40,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+  },
+  contentContainer: {
+    paddingHorizontal: 20,
+    marginTop: -40,
+  },
+  
+  // Wallet Card
+  walletCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    overflow: 'hidden',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  walletContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  walletLeft: {},
+  walletLabel: {
+    fontSize: 14,
+    color: COLORS.gray[500],
+    marginBottom: 8,
+  },
+  coinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  coinIcon: {
+    fontSize: 28,
+    marginRight: 8,
+  },
+  coinAmount: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: COLORS.gray[900],
+    marginRight: 6,
+  },
+  coinLabel: {
+    fontSize: 14,
+    color: COLORS.gray[500],
+    alignSelf: 'flex-end',
+    marginBottom: 4,
+  },
+  viewWalletBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E6F7F1',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  viewWalletText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginRight: 4,
+  },
+  walletDecoration: {
+    position: 'absolute',
+    right: -20,
+    top: -20,
+  },
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 100,
+  },
+  decorCircle1: {
+    width: 100,
+    height: 100,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    right: 0,
+    top: 0,
+  },
+  decorCircle2: {
+    width: 60,
+    height: 60,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    right: 60,
+    top: 50,
+  },
+
+  // Action Grid
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionCardWrapper: {
+    width: CARD_WIDTH,
+  },
+  actionCard: {
+    width: '100%',
+    height: 100,
+    borderRadius: 16,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  actionIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+
+  // Trust Badge
+  trustBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  trustLogoPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1E3A5F',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  trustLogoText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+  trustContent: {
+    flex: 1,
+  },
+  trustTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.gray[900],
+    marginBottom: 2,
+  },
+  trustSubtitle: {
+    fontSize: 12,
+    color: COLORS.gray[500],
+  },
+
+  // Videos Section
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.gray[900],
+    marginBottom: 16,
+  },
+  videoList: {
+    paddingRight: 20,
+    gap: 12,
+  },
+  videoCard: {
+    width: 200,
+    marginRight: 12,
+  },
+  videoThumbnail: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: COLORS.gray[100],
+    marginBottom: 8,
+  },
+  videoPlaceholder: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: SIZES.padding * 2,
+    backgroundColor: '#FEF3C7',
   },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.white,
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
-  icon: {
-    fontSize: 40,
+  playButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 4,
   },
-  title: {
-    fontSize: SIZES.xxl,
-    fontWeight: '700',
-    color: COLORS.gray[900],
-    marginBottom: 8,
+  durationBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
   },
-  subtitle: {
-    fontSize: SIZES.lg,
+  durationText: {
+    fontSize: 11,
     fontWeight: '600',
-    color: COLORS.primary,
-    marginBottom: 16,
+    color: COLORS.white,
   },
-  description: {
-    fontSize: SIZES.md,
-    color: COLORS.gray[500],
-    textAlign: 'center',
-    lineHeight: 22,
+  videoTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray[800],
+    lineHeight: 18,
   },
 });
 
