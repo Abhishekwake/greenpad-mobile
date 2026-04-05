@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { HomeScreen, WalletScreen, ReferScreen, ProfileScreen } from '../screens/main';
 import { MainTabParamList } from './types';
 import { COLORS } from '../constants';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -20,22 +27,50 @@ const getTabIcon = (routeName: keyof MainTabParamList, focused: boolean): IconNa
   return focused ? icons[routeName].focused : icons[routeName].unfocused;
 };
 
+const AnimatedTabIcon: React.FC<{
+  routeName: keyof MainTabParamList;
+  focused: boolean;
+  size: number;
+}> = ({ routeName, focused, size }) => {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (focused) {
+      scale.value = withSequence(
+        withSpring(1.25, { damping: 10, stiffness: 400 }),
+        withSpring(1, { damping: 12, stiffness: 300 })
+      );
+    }
+  }, [focused, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Ionicons
+        name={getTabIcon(routeName, focused)}
+        size={size}
+        color={focused ? COLORS.primary : COLORS.gray[400]}
+      />
+    </Animated.View>
+  );
+};
+
 const MainTabNavigator: React.FC = () => {
   return (
     <Tab.Navigator
       initialRouteName="Home"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ focused, size }) => {
-          const iconName = getTabIcon(route.name, focused);
-          return (
-            <Ionicons
-              name={iconName}
-              size={size}
-              color={focused ? COLORS.primary : COLORS.gray[400]}
-            />
-          );
-        },
+        tabBarIcon: ({ focused, size }) => (
+          <AnimatedTabIcon
+            routeName={route.name}
+            focused={focused}
+            size={size}
+          />
+        ),
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.gray[400],
         tabBarStyle: {

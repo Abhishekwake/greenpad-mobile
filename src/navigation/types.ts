@@ -16,6 +16,10 @@ export type MainTabParamList = {
 export type MainStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   BookSiteVisit: undefined;
+  RewardsStore: undefined;
+  Notifications: undefined;
+  MyLeads: undefined;
+  VideoReels: { initialIndex: number };
 };
 
 declare global {

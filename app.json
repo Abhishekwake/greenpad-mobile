@@ -13,7 +13,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.greenpad.app"
+      "bundleIdentifier": "com.greenpad.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "GreenPad needs camera access for profile photos.",
+        "NSPhotoLibraryUsageDescription": "GreenPad needs photo library access for profile photos."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,14 +26,27 @@
       },
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
-      "package": "com.greenpad.app"
+      "package": "com.greenpad.app",
+      "permissions": ["NOTIFICATIONS", "VIBRATE"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
-    ]
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#10B981"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    }
   }
 }

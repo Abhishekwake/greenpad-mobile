@@ -8,7 +8,6 @@ import {
   RefreshControl,
   FlatList,
   Dimensions,
-  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,16 +20,22 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
-  runOnJS,
   Easing,
   FadeIn,
   FadeInDown,
   FadeInUp,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Toast from 'react-native-toast-message';
 import { COLORS, SIZES } from '../../constants';
+import { userService, leadService, videoService } from '../../services';
+import type { Lead } from '../../services/lead.service';
+import type { Video } from '../../services/video.service';
+import { getErrorMessage } from '../../services/api';
+import { useAuthStore, useNotificationStore } from '../../stores';
+import { ErrorRetry } from '../../components/ui';
 import type { MainStackParamList } from '../../navigation/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -44,39 +49,29 @@ interface ActionItem {
   onPress: () => void;
 }
 
-interface VideoItem {
-  id: string;
-  title: string;
-  thumbnail: string;
-  duration: string;
+interface DashboardData {
+  user: {
+    name: string;
+    phone: string;
+    coins: number;
+    totalEarned: number;
+    totalRedeemed: number;
+    referralCode: string;
+  };
+  stats: {
+    totalReferrals: number;
+    totalLeads: number;
+  };
+  recentTransactions: Array<{
+    _id: string;
+    type: string;
+    amount: number;
+    description: string;
+    status: string;
+    createdAt: string;
+  }>;
 }
 
-const DUMMY_USER = {
-  name: 'Rahul',
-  coins: 2450,
-  notifications: 3,
-};
-
-const VIDEO_ITEMS: VideoItem[] = [
-  {
-    id: '1',
-    title: '5kW Installation in Mumbai',
-    thumbnail: 'https://picsum.photos/400/300?random=1',
-    duration: '2:30',
-  },
-  {
-    id: '2',
-    title: 'Customer Review - Pune',
-    thumbnail: 'https://picsum.photos/400/300?random=2',
-    duration: '1:45',
-  },
-  {
-    id: '3',
-    title: '10kW Commercial Setup',
-    thumbnail: 'https://picsum.photos/400/300?random=3',
-    duration: '3:15',
-  },
-];
 
 const SkeletonBox: React.FC<{ width: number | string; height: number; style?: object }> = ({
   width,
@@ -189,7 +184,7 @@ const ActionCard: React.FC<{ item: ActionItem; index: number }> = ({ item, index
   );
 };
 
-const CoinWalletCard: React.FC<{ coins: number }> = ({ coins }) => {
+const CoinWalletCard: React.FC<{ coins: number; onViewWallet: () => void }> = ({ coins, onViewWallet }) => {
   const [displayCoins, setDisplayCoins] = useState(0);
   const animatedCoins = useSharedValue(0);
   const cardScale = useSharedValue(1);
@@ -242,9 +237,7 @@ const CoinWalletCard: React.FC<{ coins: number }> = ({ coins }) => {
             <Text style={styles.walletLabel}>Your Balance</Text>
             <View style={styles.coinRow}>
               <Text style={styles.coinIcon}>🪙</Text>
-              <Text style={styles.coinAmount}>
-                {displayCoins.toLocaleString()}
-              </Text>
+              <Text style={styles.coinAmount}>{displayCoins.toLocaleString()}</Text>
               <Text style={styles.coinLabel}>GreenCoins</Text>
             </View>
           </View>
@@ -252,6 +245,7 @@ const CoinWalletCard: React.FC<{ coins: number }> = ({ coins }) => {
             style={styles.viewWalletBtn}
             onPress={async () => {
               await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onViewWallet();
             }}
           >
             <Text style={styles.viewWalletText}>View Wallet</Text>
@@ -267,24 +261,26 @@ const CoinWalletCard: React.FC<{ coins: number }> = ({ coins }) => {
   );
 };
 
-const TrustBadge: React.FC = () => {
-  return (
-    <Animated.View entering={FadeInDown.delay(500).springify()}>
-      <View style={styles.trustBadge}>
-        <View style={styles.trustLogoPlaceholder}>
-          <Text style={styles.trustLogoText}>W</Text>
-        </View>
-        <View style={styles.trustContent}>
-          <Text style={styles.trustTitle}>Authorized Waaree Partner</Text>
-          <Text style={styles.trustSubtitle}>500+ Happy Customers</Text>
-        </View>
-        <Ionicons name="shield-checkmark" size={24} color={COLORS.primary} />
+const TrustBadge: React.FC = () => (
+  <Animated.View entering={FadeInDown.delay(500).springify()}>
+    <View style={styles.trustBadge}>
+      <View style={styles.trustLogoPlaceholder}>
+        <Text style={styles.trustLogoText}>W</Text>
       </View>
-    </Animated.View>
-  );
-};
+      <View style={styles.trustContent}>
+        <Text style={styles.trustTitle}>Authorized Waaree Partner</Text>
+        <Text style={styles.trustSubtitle}>500+ Happy Customers</Text>
+      </View>
+      <Ionicons name="shield-checkmark" size={24} color={COLORS.primary} />
+    </View>
+  </Animated.View>
+);
 
-const VideoCard: React.FC<{ item: VideoItem; index: number }> = ({ item, index }) => {
+const VideoCard: React.FC<{
+  item: Video;
+  index: number;
+  onPress: (index: number) => void;
+}> = ({ item, index, onPress }) => {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -301,6 +297,7 @@ const VideoCard: React.FC<{ item: VideoItem; index: number }> = ({ item, index }
 
   const handlePress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress(index);
   };
 
   return (
@@ -313,9 +310,17 @@ const VideoCard: React.FC<{ item: VideoItem; index: number }> = ({ item, index }
         activeOpacity={1}
       >
         <View style={styles.videoThumbnail}>
-          <View style={styles.videoPlaceholder}>
-            <Ionicons name="sunny" size={40} color={COLORS.secondary} />
-          </View>
+          {item.thumbnail ? (
+            <Animated.Image
+              source={{ uri: item.thumbnail }}
+              style={styles.videoThumbnailImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.videoPlaceholder}>
+              <Ionicons name="sunny" size={40} color={COLORS.secondary} />
+            </View>
+          )}
           <View style={styles.playOverlay}>
             <View style={styles.playButton}>
               <Ionicons name="play" size={24} color={COLORS.white} />
@@ -324,24 +329,138 @@ const VideoCard: React.FC<{ item: VideoItem; index: number }> = ({ item, index }
           <View style={styles.durationBadge}>
             <Text style={styles.durationText}>{item.duration}</Text>
           </View>
+          {item.type === 'vertical' && (
+            <View style={styles.verticalBadge}>
+              <Ionicons name="phone-portrait-outline" size={10} color="#FFF" />
+            </View>
+          )}
         </View>
         <Text style={styles.videoTitle} numberOfLines={2}>
           {item.title}
+        </Text>
+        <Text style={styles.videoLocation} numberOfLines={1}>
+          📍 {item.location}
         </Text>
       </AnimatedTouchable>
     </Animated.View>
   );
 };
 
+const ACTIVE_LEAD_STATUSES = ['pending', 'contacted', 'visited'];
+
+const LOADING_TIMEOUT = 20000; // 20 seconds max loading time
+
 const HomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const tabNavigation = useNavigation();
+  const stackNavigation = tabNavigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const openBookSiteVisit = useCallback(() => {
-    const parent = tabNavigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
-    parent?.navigate('BookSiteVisit');
-  }, [tabNavigation]);
+  const [error, setError] = useState<string | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const { userData, updateCoins } = useAuthStore();
+  const loadingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const fetchDashboard = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) {
+        setError(null);
+        
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current);
+        }
+        loadingTimeoutRef.current = setTimeout(() => {
+          setIsLoading(false);
+          setRefreshing(false);
+          setError('Connection is slow. Pull down to retry.');
+        }, LOADING_TIMEOUT);
+      }
+
+      const [data, leads, videosData] = await Promise.all([
+        userService.getDashboard(),
+        leadService.getMyLeads(),
+        videoService.getVideos().catch(() => []),
+      ]);
+      
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+
+      setDashboard(data);
+      updateCoins(data.user.coins);
+      setVideos(videosData);
+      setError(null);
+
+      const active = leads.find((l) => ACTIVE_LEAD_STATUSES.includes(l.status)) ?? null;
+      setActiveLead(active);
+    } catch (err) {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      setError(getErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  }, [updateCoins]);
+
+  const handleVideoPress = useCallback(
+    (index: number) => {
+      stackNavigation?.navigate('VideoReels', { initialIndex: index });
+    },
+    [stackNavigation]
+  );
+
+  useEffect(() => {
+    fetchDashboard();
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, [fetchDashboard]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoading && dashboard) {
+        fetchDashboard(false);
+      }
+    }, [dashboard]) // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const userName = dashboard?.user?.name || userData?.name || 'User';
+  const userCoins = dashboard?.user?.coins ?? userData?.coins ?? 0;
+
+  const navigateToStack = useCallback(
+    (screen: keyof MainStackParamList) => {
+      const parent = tabNavigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
+      parent?.navigate(screen as any);
+    },
+    [tabNavigation]
+  );
+
+  const siteVisitCard: ActionItem = useMemo(() => {
+    if (activeLead) {
+      return {
+        id: '2',
+        title: 'Visit Scheduled',
+        icon: 'checkmark-circle',
+        gradient: ['#3B82F6', '#1D4ED8'],
+        onPress: () => navigateToStack('MyLeads'),
+      };
+    }
+    return {
+      id: '2',
+      title: 'Book Site Visit',
+      icon: 'calendar',
+      gradient: ['#3B82F6', '#1D4ED8'],
+      onPress: () => navigateToStack('BookSiteVisit'),
+    };
+  }, [activeLead, navigateToStack]);
 
   const actionItems = useMemo<ActionItem[]>(
     () => [
@@ -350,65 +469,60 @@ const HomeScreen: React.FC = () => {
         title: 'Refer & Earn',
         icon: 'share-social',
         gradient: ['#10B981', '#059669'],
-        onPress: () => {},
+        onPress: () => tabNavigation.navigate('Refer'),
       },
-      {
-        id: '2',
-        title: 'Book Site Visit',
-        icon: 'calendar',
-        gradient: ['#3B82F6', '#1D4ED8'],
-        onPress: openBookSiteVisit,
-      },
+      siteVisitCard,
       {
         id: '3',
-        title: 'Watch & Learn',
-        icon: 'play-circle',
-        gradient: ['#8B5CF6', '#6D28D9'],
-        onPress: () => {},
-      },
-      {
-        id: '4',
         title: 'Rewards Store',
         icon: 'gift',
         gradient: ['#F59E0B', '#D97706'],
+        onPress: () => navigateToStack('RewardsStore'),
+      },
+      {
+        id: '4',
+        title: 'Contact Us',
+        icon: 'chatbubble-ellipses',
+        gradient: ['#8B5CF6', '#6D28D9'],
         onPress: () => {},
       },
     ],
-    [openBookSiteVisit]
+    [navigateToStack, tabNavigation, siteVisitCard]
   );
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1500);
-  }, []);
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
 
   const handleNotificationPress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigateToStack('Notifications');
   };
 
   if (isLoading) {
     return <SkeletonLoader />;
   }
 
+  if (error && !dashboard) {
+    return (
+      <View style={styles.container}>
+        <ErrorRetry message={error} onRetry={fetchDashboard} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      
-      {/* Header */}
+
       <View style={[styles.headerGradient, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerContent}>
           <View>
-            <Text style={styles.greeting}>Hello, {DUMMY_USER.name}! 👋</Text>
+            <Text style={styles.greeting}>Hello, {userName}! 👋</Text>
             <Text style={styles.subGreeting}>Let's go green today</Text>
           </View>
           <TouchableOpacity
@@ -416,9 +530,11 @@ const HomeScreen: React.FC = () => {
             onPress={handleNotificationPress}
           >
             <Ionicons name="notifications-outline" size={24} color={COLORS.white} />
-            {DUMMY_USER.notifications > 0 && (
-              <View style={styles.notificationBadge}>
-                <Text style={styles.notificationCount}>{DUMMY_USER.notifications}</Text>
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
               </View>
             )}
           </TouchableOpacity>
@@ -438,34 +554,38 @@ const HomeScreen: React.FC = () => {
           />
         }
       >
-        {/* Coin Wallet Card */}
-        <CoinWalletCard coins={DUMMY_USER.coins} />
+        <CoinWalletCard coins={userCoins} onViewWallet={() => tabNavigation.navigate('Wallet')} />
 
-        {/* Action Grid */}
         <View style={styles.actionGrid}>
           {actionItems.map((item, index) => (
             <ActionCard key={item.id} item={item} index={index} />
           ))}
         </View>
 
-        {/* Trust Badge */}
         <TrustBadge />
 
-        {/* Videos Section */}
         <Animated.View entering={FadeInDown.delay(550).springify()}>
           <Text style={styles.sectionTitle}>See Real Installations</Text>
         </Animated.View>
-        
-        <FlatList
-          data={VIDEO_ITEMS}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.videoList}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => <VideoCard item={item} index={index} />}
-        />
 
-        {/* Bottom spacing */}
+        {videos.length > 0 ? (
+          <FlatList
+            data={videos}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.videoList}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item, index }) => (
+              <VideoCard item={item} index={index} onPress={handleVideoPress} />
+            )}
+          />
+        ) : (
+          <View style={styles.noVideosContainer}>
+            <Ionicons name="videocam-outline" size={32} color={COLORS.gray[400]} />
+            <Text style={styles.noVideosText}>Videos coming soon</Text>
+          </View>
+        )}
+
         <View style={{ height: 100 }} />
       </ScrollView>
     </View>
@@ -507,21 +627,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  notificationBadge: {
+  badge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    top: 2,
+    right: 2,
     backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#059669',
   },
-  notificationCount: {
-    fontSize: 10,
-    fontWeight: '700',
+  badgeText: {
     color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '800',
   },
   scrollView: {
     flex: 1,
@@ -534,8 +657,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: -40,
   },
-  
-  // Wallet Card
+
   walletCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 20,
@@ -618,7 +740,6 @@ const styles = StyleSheet.create({
     top: 50,
   },
 
-  // Action Grid
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -649,7 +770,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  // Trust Badge
   trustBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -691,7 +811,6 @@ const styles = StyleSheet.create({
     color: COLORS.gray[500],
   },
 
-  // Videos Section
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -754,6 +873,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray[800],
     lineHeight: 18,
+  },
+  videoThumbnailImage: {
+    width: '100%',
+    height: '100%',
+  },
+  verticalBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  videoLocation: {
+    fontSize: 11,
+    color: COLORS.gray[500],
+    marginTop: 2,
+  },
+  noVideosContainer: {
+    height: 150,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  noVideosText: {
+    fontSize: 14,
+    color: COLORS.gray[500],
+    marginTop: 8,
   },
 });
 

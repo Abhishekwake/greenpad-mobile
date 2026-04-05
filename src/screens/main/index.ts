@@ -3,3 +3,7 @@ export { default as WalletScreen } from './WalletScreen';
 export { default as ReferScreen } from './ReferScreen';
 export { default as ProfileScreen } from './ProfileScreen';
 export { default as BookSiteVisitScreen } from './BookSiteVisitScreen';
+export { default as RewardsStoreScreen } from './RewardsStoreScreen';
+export { default as NotificationsScreen } from './NotificationsScreen';
+export { default as MyLeadsScreen } from './MyLeadsScreen';
+export { default as VideoReelScreen } from './VideoReelScreen';

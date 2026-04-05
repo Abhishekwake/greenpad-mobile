@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, memo } from 'react';
+import React, { useState, useCallback, useMemo, memo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Share,
   Platform,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,102 +27,45 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
+import Toast from 'react-native-toast-message';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SIZES } from '../../constants';
-
-type ReferralStatus = 'Signed up' | 'Visited' | 'Converted';
-
-interface Referral {
-  id: number;
-  name: string;
-  status: ReferralStatus;
-  coinsEarned: number;
-  date: string;
-}
-
-const REFERRALS: Referral[] = [
-  { id: 1, name: 'Suresh Patil', status: 'Converted', coinsEarned: 2800, date: '2024-03-15' },
-  { id: 2, name: 'Priya Deshmukh', status: 'Visited', coinsEarned: 800, date: '2024-03-28' },
-  { id: 3, name: 'Ramesh Kumar', status: 'Signed up', coinsEarned: 300, date: '2024-04-01' },
-];
+import { referralService } from '../../services';
+import type { ReferralStats } from '../../services/referral.service';
+import { getErrorMessage } from '../../services/api';
+import { useAuthStore } from '../../stores';
+import { ErrorRetry } from '../../components/ui';
 
 const STEPS = [
-  {
-    emoji: '👤',
-    title: 'Friend installs using your code',
-    coins: 300,
-  },
-  {
-    emoji: '📅',
-    title: 'They book a site visit',
-    coins: 500,
-  },
-  {
-    emoji: '💰',
-    title: 'They go solar',
-    coins: 2000,
-  },
+  { emoji: '👤', title: 'Friend installs using your code', coins: 300 },
+  { emoji: '📅', title: 'They book a site visit', coins: 500 },
+  { emoji: '💰', title: 'They go solar', coins: 2000 },
 ];
 
-const generateReferralCode = (): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = 'GP';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-};
-
-const REFERRAL_CODE = 'GP7X4K2';
 const APP_LINK = 'https://greenpad.app/download';
 
 const getShareMessage = (code: string): string => {
-  return `Hey! 👋 Join me on GreenPad and go solar! 🌞
-
-Use my code: ${code} for 200 bonus coins!
-
-Download: ${APP_LINK}`;
+  return `Hey! 👋 Join me on GreenPad and go solar! 🌞\n\nUse my code: ${code} for 200 bonus coins!\n\nDownload: ${APP_LINK}`;
 };
 
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-const getStatusColor = (status: ReferralStatus): { bg: string; text: string } => {
+type ReferralStatus = 'Signed up' | 'Visited' | 'Converted';
+
+const getStatusColor = (status: string): { bg: string; text: string } => {
   switch (status) {
     case 'Converted':
       return { bg: '#ECFDF5', text: COLORS.primary };
     case 'Visited':
       return { bg: '#FEF3C7', text: '#D97706' };
     case 'Signed up':
-      return { bg: '#EFF6FF', text: '#3B82F6' };
     default:
-      return { bg: COLORS.gray[100], text: COLORS.gray[600] };
+      return { bg: '#EFF6FF', text: '#3B82F6' };
   }
 };
-
-interface ToastProps {
-  visible: boolean;
-  message: string;
-}
-
-const Toast: React.FC<ToastProps> = memo(({ visible, message }) => {
-  if (!visible) return null;
-  
-  return (
-    <Animated.View
-      entering={FadeInUp.springify()}
-      style={styles.toast}
-    >
-      <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-      <Text style={styles.toastText}>{message}</Text>
-    </Animated.View>
-  );
-});
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -131,12 +75,7 @@ interface ReferralCodeCardProps {
 }
 
 const ReferralCodeCard: React.FC<ReferralCodeCardProps> = memo(({ code, onCopy }) => {
-  const scale = useSharedValue(1);
   const copyScale = useSharedValue(1);
-
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
 
   const copyButtonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: copyScale.value }],
@@ -151,21 +90,18 @@ const ReferralCodeCard: React.FC<ReferralCodeCardProps> = memo(({ code, onCopy }
   };
 
   return (
-    <Animated.View
-      entering={FadeInDown.delay(200).springify()}
-      style={[styles.codeCard, cardStyle]}
-    >
+    <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.codeCard}>
       <View style={styles.codeCardDecor}>
         <View style={[styles.decorCircle, styles.decorCircle1]} />
         <View style={[styles.decorCircle, styles.decorCircle2]} />
       </View>
-      
+
       <Text style={styles.codeLabel}>Your Referral Code</Text>
-      
+
       <View style={styles.codeContainer}>
         <Text style={styles.codeText}>{code}</Text>
       </View>
-      
+
       <AnimatedTouchable
         style={[styles.copyButton, copyButtonStyle]}
         onPress={handleCopy}
@@ -209,7 +145,7 @@ const ShareButton: React.FC<ShareButtonProps> = memo(({ onShare }) => {
         <Ionicons name="logo-whatsapp" size={24} color={COLORS.white} />
         <Text style={styles.shareButtonText}>Share via WhatsApp</Text>
       </AnimatedTouchable>
-      
+
       <TouchableOpacity style={styles.otherShareButton} onPress={onShare}>
         <Ionicons name="share-social-outline" size={18} color={COLORS.gray[600]} />
         <Text style={styles.otherShareText}>Other sharing options</Text>
@@ -219,7 +155,7 @@ const ShareButton: React.FC<ShareButtonProps> = memo(({ onShare }) => {
 });
 
 interface StepItemProps {
-  step: typeof STEPS[0];
+  step: (typeof STEPS)[0];
   index: number;
 }
 
@@ -241,14 +177,14 @@ const StepItem: React.FC<StepItemProps> = memo(({ step, index }) => (
   </Animated.View>
 ));
 
-interface ReferralItemProps {
-  referral: Referral;
+interface ReferralItemUIProps {
+  referral: { name: string; phone: string; joinedAt: string };
   index: number;
 }
 
-const ReferralItem: React.FC<ReferralItemProps> = memo(({ referral, index }) => {
-  const statusColors = getStatusColor(referral.status);
-  
+const ReferralItemUI: React.FC<ReferralItemUIProps> = memo(({ referral, index }) => {
+  const statusColors = getStatusColor('Signed up');
+
   return (
     <Animated.View
       entering={FadeInDown.delay(700 + index * 80).springify()}
@@ -257,23 +193,18 @@ const ReferralItem: React.FC<ReferralItemProps> = memo(({ referral, index }) => 
       <View style={styles.referralLeft}>
         <View style={styles.referralAvatar}>
           <Text style={styles.referralAvatarText}>
-            {referral.name.charAt(0)}
+            {(referral.name || referral.phone).charAt(0).toUpperCase()}
           </Text>
         </View>
         <View style={styles.referralInfo}>
-          <Text style={styles.referralName}>{referral.name}</Text>
-          <Text style={styles.referralDate}>{formatDate(referral.date)}</Text>
+          <Text style={styles.referralName}>{referral.name || referral.phone}</Text>
+          <Text style={styles.referralDate}>{formatDate(referral.joinedAt)}</Text>
         </View>
       </View>
-      
+
       <View style={styles.referralRight}>
-        <Text style={styles.referralCoins}>
-          +{referral.coinsEarned.toLocaleString()} 🪙
-        </Text>
         <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
-          <Text style={[styles.statusText, { color: statusColors.text }]}>
-            {referral.status}
-          </Text>
+          <Text style={[styles.statusText, { color: statusColors.text }]}>Signed up</Text>
         </View>
       </View>
     </Animated.View>
@@ -295,77 +226,101 @@ const EmptyReferrals: React.FC = memo(() => (
 const ReferScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<ReferralStats | null>(null);
+  const { userData } = useAuthStore();
 
-  const totalEarned = useMemo(() => {
-    return REFERRALS.reduce((sum, r) => sum + r.coinsEarned, 0);
+  const referralCode = stats?.referralCode || userData?.referralCode || '------';
+
+  const fetchStats = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await referralService.getStats();
+      setStats(data);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  const showToastMessage = useCallback((message: string) => {
-    setToastMessage(message);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 2000);
-  }, []);
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoading) fetchStats();
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const handleCopyCode = useCallback(async () => {
     try {
-      await Clipboard.setStringAsync(REFERRAL_CODE);
+      await Clipboard.setStringAsync(referralCode);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showToastMessage('Code copied to clipboard!');
-    } catch (error) {
-      console.error('Failed to copy:', error);
+      Toast.show({ type: 'success', text1: 'Copied!', text2: 'Referral code copied to clipboard' });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to copy' });
     }
-  }, [showToastMessage]);
+  }, [referralCode]);
 
   const handleShare = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    const message = getShareMessage(REFERRAL_CODE);
-    
-    // Try WhatsApp first
+
+    const message = getShareMessage(referralCode);
     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
-    
+
     try {
       const canOpen = await Linking.canOpenURL(whatsappUrl);
       if (canOpen) {
         await Linking.openURL(whatsappUrl);
         return;
       }
-    } catch (error) {
-      console.log('WhatsApp not available, using share sheet');
+    } catch {
+      // WhatsApp not available
     }
-    
-    // Fallback to general share sheet
+
     try {
-      await Share.share({
-        message,
-        title: 'Join GreenPad',
-      });
-    } catch (error) {
-      console.error('Share failed:', error);
+      await Share.share({ message, title: 'Join GreenPad' });
+    } catch {
+      // share cancelled or failed
     }
-  }, []);
+  }, [referralCode]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setTimeout(() => setRefreshing(false), 1500);
-  }, []);
+    fetchStats();
+  }, [fetchStats]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <View style={styles.container}>
+        <ErrorRetry message={error} onRetry={fetchStats} />
+      </View>
+    );
+  }
+
+  const referrals = stats?.referrals ?? [];
+  const totalEarned = stats?.totalReferralEarnings ?? 0;
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      
-      {/* Toast */}
-      <Toast visible={showToast} message={toastMessage} />
-      
+
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingTop: insets.top + 20 },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -376,19 +331,15 @@ const ReferScreen: React.FC = () => {
           />
         }
       >
-        {/* Header */}
         <Animated.View entering={FadeIn.delay(100)} style={styles.header}>
           <Text style={styles.title}>Refer & Earn Rewards</Text>
           <Text style={styles.subtitle}>Share solar with friends, earn together</Text>
         </Animated.View>
 
-        {/* Referral Code Card */}
-        <ReferralCodeCard code={REFERRAL_CODE} onCopy={handleCopyCode} />
+        <ReferralCodeCard code={referralCode} onCopy={handleCopyCode} />
 
-        {/* Share Section */}
         <ShareButton onShare={handleShare} />
 
-        {/* How It Works */}
         <Animated.View entering={FadeInDown.delay(350).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>How It Works</Text>
           <View style={styles.stepsContainer}>
@@ -403,23 +354,20 @@ const ReferScreen: React.FC = () => {
           </View>
         </Animated.View>
 
-        {/* Your Referrals */}
         <Animated.View entering={FadeInDown.delay(650).springify()} style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Your Referrals</Text>
-            {REFERRALS.length > 0 && (
+            {referrals.length > 0 && (
               <View style={styles.totalEarnedBadge}>
-                <Text style={styles.totalEarnedText}>
-                  +{totalEarned.toLocaleString()} 🪙
-                </Text>
+                <Text style={styles.totalEarnedText}>+{totalEarned.toLocaleString()} 🪙</Text>
               </View>
             )}
           </View>
-          
-          {REFERRALS.length > 0 ? (
+
+          {referrals.length > 0 ? (
             <View style={styles.referralsList}>
-              {REFERRALS.map((referral, index) => (
-                <ReferralItem key={referral.id} referral={referral} index={index} />
+              {referrals.map((referral, index) => (
+                <ReferralItemUI key={index} referral={referral} index={index} />
               ))}
             </View>
           ) : (
@@ -427,7 +375,6 @@ const ReferScreen: React.FC = () => {
           )}
         </Animated.View>
 
-        {/* Bottom Spacing */}
         <View style={{ height: 100 }} />
       </ScrollView>
     </View>
@@ -439,43 +386,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-  },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20 },
 
-  // Toast
-  toast: {
-    position: 'absolute',
-    top: 60,
-    left: 20,
-    right: 20,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 1000,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  toastText: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '600',
-    marginLeft: 10,
-  },
-
-  // Header
-  header: {
-    marginBottom: 24,
-  },
+  header: { marginBottom: 24 },
   title: {
     fontSize: 28,
     fontWeight: '800',
@@ -487,7 +401,6 @@ const styles = StyleSheet.create({
     color: COLORS.gray[500],
   },
 
-  // Code Card
   codeCard: {
     backgroundColor: COLORS.white,
     borderRadius: 20,
@@ -566,7 +479,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
-  // Share Button
   shareButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -600,10 +512,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  // Section
-  section: {
-    marginBottom: 24,
-  },
+  section: { marginBottom: 24 },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -629,7 +538,6 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  // Steps
   stepsContainer: {
     backgroundColor: COLORS.white,
     borderRadius: 16,
@@ -658,18 +566,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  stepEmojiText: {
-    fontSize: 22,
-  },
+  stepEmojiText: { fontSize: 22 },
   stepTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.gray[800],
     flex: 1,
   },
-  stepCoins: {
-    alignItems: 'flex-end',
-  },
+  stepCoins: { alignItems: 'flex-end' },
   stepCoinsText: {
     fontSize: 18,
     fontWeight: '800',
@@ -697,10 +601,7 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  // Referrals List
-  referralsList: {
-    gap: 12,
-  },
+  referralsList: { gap: 12 },
   referralItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -743,15 +644,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.gray[400],
   },
-  referralRight: {
-    alignItems: 'flex-end',
-  },
-  referralCoins: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.primary,
-    marginBottom: 6,
-  },
+  referralRight: { alignItems: 'flex-end' },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -762,7 +655,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Empty State
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -778,9 +670,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  emptyEmoji: {
-    fontSize: 48,
-  },
+  emptyEmoji: { fontSize: 48 },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',

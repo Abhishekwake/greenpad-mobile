@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useForm, Controller } from 'react-hook-form';
@@ -29,8 +30,12 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import Toast from 'react-native-toast-message';
 import { COLORS, SIZES } from '../../constants';
 import { useAuthStore } from '../../stores';
+import { leadService } from '../../services';
+import { getErrorMessage } from '../../services/api';
+import { LoadingOverlay } from '../../components/ui';
 import type { MainStackParamList } from '../../navigation/types';
 
 const TOTAL_STEPS = 4;
@@ -123,7 +128,20 @@ function formatDisplayDate(d: Date): string {
   });
 }
 
-const SuccessView: React.FC<{ onHome: () => void }> = ({ onHome }) => {
+const TIME_SLOT_MAP: Record<string, string> = {
+  morning: 'Morning (9-12)',
+  afternoon: 'Afternoon (12-4)',
+  evening: 'Evening (4-7)',
+};
+
+const PROPERTY_TYPE_MAP: Record<string, string> = {
+  residential: 'Residential',
+  commercial: 'Commercial',
+  industrial: 'Industrial',
+  agricultural: 'Agricultural',
+};
+
+const SuccessView: React.FC<{ coinsEarned: number; onHome: () => void }> = ({ coinsEarned, onHome }) => {
   const scale = useSharedValue(0);
   const ring = useSharedValue(0);
 
@@ -154,7 +172,7 @@ const SuccessView: React.FC<{ onHome: () => void }> = ({ onHome }) => {
       </View>
       <Text style={styles.successTitle}>Visit Scheduled Successfully!</Text>
       <View style={styles.coinsBanner}>
-        <Text style={styles.coinsBannerText}>+100 coins earned</Text>
+        <Text style={styles.coinsBannerText}>+{coinsEarned} coins earned</Text>
       </View>
       <Text style={styles.successBody}>Our team will call you within 2 hours</Text>
       <TouchableOpacity style={styles.homeBtn} onPress={onHome} activeOpacity={0.85}>
@@ -171,9 +189,9 @@ function buildDefaultPhone(p: string | null): string {
   return last10.length === 10 ? `+91${last10}` : p;
 }
 
-function buildDefaultValues(phone: string | null): BookingFormValues {
+function buildDefaultValues(phone: string | null, name?: string): BookingFormValues {
   return {
-    fullName: '',
+    fullName: name || '',
     phone: buildDefaultPhone(phone),
     email: '',
     address: '',
@@ -189,14 +207,19 @@ function buildDefaultValues(phone: string | null): BookingFormValues {
 const BookSiteVisitScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
-  const { phoneNumber } = useAuthStore();
+  const { phoneNumber, userData, updateCoins } = useAuthStore();
 
   const [step, setStep] = useState(1);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
   const [stepKey, setStepKey] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [coinsEarned, setCoinsEarned] = useState(100);
 
-  const defaultValues = useMemo(() => buildDefaultValues(phoneNumber), [phoneNumber]);
+  const defaultValues = useMemo(
+    () => buildDefaultValues(phoneNumber, userData?.name),
+    [phoneNumber, userData?.name]
+  );
 
   const {
     control,
@@ -214,7 +237,10 @@ const BookSiteVisitScreen: React.FC = () => {
 
   useEffect(() => {
     setValue('phone', buildDefaultPhone(phoneNumber), { shouldValidate: true });
-  }, [phoneNumber, setValue]);
+    if (userData?.name && !watch('fullName')) {
+      setValue('fullName', userData.name, { shouldValidate: true });
+    }
+  }, [phoneNumber, userData?.name, setValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const watched = watch();
   const canStep1 = useMemo(() => {
@@ -276,10 +302,36 @@ const BookSiteVisitScreen: React.FC = () => {
 
   const onSubmit = useCallback(
     async (data: BookingFormValues) => {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowSuccess(true);
+      setIsSubmitting(true);
+      try {
+        const payload = {
+          name: data.fullName,
+          phone: data.phone.replace(/\D/g, '').slice(-10),
+          address: data.address,
+          propertyType: PROPERTY_TYPE_MAP[data.propertyType] || data.propertyType,
+          roofArea: Math.round(data.roofAreaSqFt),
+          preferredDate: data.preferredDate.toISOString(),
+          timeSlot: data.timeSlot,
+          notes: data.notes || undefined,
+        };
+
+        const response = await leadService.createLead(payload);
+        setCoinsEarned(response.data.coinsEarned);
+
+        if (response.data.totalCoins) {
+          updateCoins(response.data.totalCoins);
+        }
+
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Toast.show({ type: 'success', text1: 'Booking confirmed!', text2: `+${response.data.coinsEarned} coins earned` });
+        setShowSuccess(true);
+      } catch (error) {
+        Toast.show({ type: 'error', text1: 'Booking failed', text2: getErrorMessage(error) });
+      } finally {
+        setIsSubmitting(false);
+      }
     },
-    []
+    [updateCoins]
   );
 
   const onInvalidSubmit = useCallback(async () => {
@@ -295,18 +347,14 @@ const BookSiteVisitScreen: React.FC = () => {
     setShowSuccess(false);
     setStep(1);
     setStepKey((k) => k + 1);
-    reset(buildDefaultValues(phoneNumber));
+    reset(buildDefaultValues(phoneNumber, userData?.name));
     navigation.navigate('MainTabs', { screen: 'Home' });
-  }, [navigation, phoneNumber, reset]);
+  }, [navigation, phoneNumber, userData?.name, reset]);
 
   const onDateChange = useCallback(
     (_: unknown, date?: Date) => {
-      if (Platform.OS === 'android') {
-        setShowDatePicker(false);
-      }
-      if (date) {
-        setValue('preferredDate', date, { shouldValidate: true });
-      }
+      if (Platform.OS === 'android') setShowDatePicker(false);
+      if (date) setValue('preferredDate', date, { shouldValidate: true });
     },
     [setValue]
   );
@@ -315,7 +363,7 @@ const BookSiteVisitScreen: React.FC = () => {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <StatusBar style="dark" />
-        <SuccessView onHome={goHome} />
+        <SuccessView coinsEarned={coinsEarned} onHome={goHome} />
       </View>
     );
   }
@@ -323,6 +371,7 @@ const BookSiteVisitScreen: React.FC = () => {
   return (
     <View style={styles.screen}>
       <StatusBar style="dark" />
+      <LoadingOverlay visible={isSubmitting} message="Submitting..." />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -359,7 +408,7 @@ const BookSiteVisitScreen: React.FC = () => {
             {step === 1 && (
               <>
                 <Text style={styles.stepTitle}>Personal details</Text>
-                <Text style={styles.stepHint}>We’ll use this to contact you about the visit.</Text>
+                <Text style={styles.stepHint}>We'll use this to contact you about the visit.</Text>
 
                 <Text style={styles.label}>Full name *</Text>
                 <Controller
@@ -470,7 +519,9 @@ const BookSiteVisitScreen: React.FC = () => {
                 />
 
                 <Text style={styles.label}>Roof area (sq ft) *</Text>
-                <Text style={styles.sliderValue}>{Math.round(watched.roofAreaSqFt).toLocaleString()} sq ft</Text>
+                <Text style={styles.sliderValue}>
+                  {Math.round(watched.roofAreaSqFt).toLocaleString()} sq ft
+                </Text>
                 <Controller
                   control={control}
                   name="roofAreaSqFt"
@@ -565,7 +616,7 @@ const BookSiteVisitScreen: React.FC = () => {
                   render={({ field: { onChange, onBlur, value } }) => (
                     <TextInput
                       style={styles.textArea}
-                      placeholder="Gate code, landmarks, roof access…"
+                      placeholder="Gate code, landmarks, roof access..."
                       placeholderTextColor={COLORS.gray[400]}
                       value={value}
                       onBlur={onBlur}
@@ -642,13 +693,19 @@ const BookSiteVisitScreen: React.FC = () => {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={[styles.primaryBtn, !canProceed && styles.primaryBtnDisabled]}
+              style={[styles.primaryBtn, (!canProceed || isSubmitting) && styles.primaryBtnDisabled]}
               onPress={handleConfirmPress}
-              disabled={!canProceed}
+              disabled={!canProceed || isSubmitting}
               activeOpacity={0.85}
             >
-              <Text style={styles.primaryBtnText}>Confirm Booking</Text>
-              <Ionicons name="checkmark-circle" size={22} color={COLORS.white} />
+              {isSubmitting ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <>
+                  <Text style={styles.primaryBtnText}>Confirm Booking</Text>
+                  <Ionicons name="checkmark-circle" size={22} color={COLORS.white} />
+                </>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -665,10 +722,7 @@ const SummaryRow: React.FC<{ label: string; value: string }> = ({ label, value }
 );
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  screen: { flex: 1, backgroundColor: COLORS.background },
   flex: { flex: 1 },
   header: {
     paddingHorizontal: SIZES.padding,
@@ -683,18 +737,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerSpacer: { width: 40 },
-  progressText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.gray[800],
-  },
+  progressText: { fontSize: 15, fontWeight: '700', color: COLORS.gray[800] },
   progressTrack: {
     height: 6,
     backgroundColor: COLORS.gray[100],
@@ -706,28 +751,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     borderRadius: 3,
   },
-  scrollContent: {
-    padding: SIZES.padding,
-    paddingBottom: 120,
-  },
-  stepTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.gray[900],
-    marginBottom: 6,
-  },
-  stepHint: {
-    fontSize: 14,
-    color: COLORS.gray[500],
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.gray[700],
-    marginBottom: 8,
-  },
+  scrollContent: { padding: SIZES.padding, paddingBottom: 120 },
+  stepTitle: { fontSize: 22, fontWeight: '800', color: COLORS.gray[900], marginBottom: 6 },
+  stepHint: { fontSize: 14, color: COLORS.gray[500], marginBottom: 20, lineHeight: 20 },
+  label: { fontSize: 14, fontWeight: '600', color: COLORS.gray[700], marginBottom: 8 },
   input: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -739,13 +766,8 @@ const styles = StyleSheet.create({
     color: COLORS.gray[900],
     marginBottom: 4,
   },
-  inputDisabled: {
-    backgroundColor: COLORS.gray[50],
-    color: COLORS.gray[600],
-  },
-  inputError: {
-    borderColor: '#EF4444',
-  },
+  inputDisabled: { backgroundColor: COLORS.gray[50], color: COLORS.gray[600] },
+  inputError: { borderColor: '#EF4444' },
   textArea: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -758,23 +780,9 @@ const styles = StyleSheet.create({
     minHeight: 100,
     marginBottom: 4,
   },
-  helper: {
-    fontSize: 12,
-    color: COLORS.gray[400],
-    marginBottom: 16,
-    marginTop: -4,
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#EF4444',
-    marginBottom: 12,
-  },
-  radioGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 20,
-  },
+  helper: { fontSize: 12, color: COLORS.gray[400], marginBottom: 16, marginTop: -4 },
+  errorText: { fontSize: 13, color: '#EF4444', marginBottom: 12 },
+  radioGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   radioCard: {
     width: '48%',
     flexGrow: 1,
@@ -786,29 +794,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     alignItems: 'center',
   },
-  radioCardActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#ECFDF5',
-  },
+  radioCardActive: { borderColor: COLORS.primary, backgroundColor: '#ECFDF5' },
   radioEmoji: { fontSize: 28, marginBottom: 6 },
-  radioLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.gray[700],
-    textAlign: 'center',
-  },
+  radioLabel: { fontSize: 13, fontWeight: '600', color: COLORS.gray[700], textAlign: 'center' },
   radioLabelActive: { color: COLORS.primary },
-  sliderValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.primary,
-    marginBottom: 4,
-  },
-  slider: {
-    width: '100%',
-    height: 44,
-    marginBottom: 8,
-  },
+  sliderValue: { fontSize: 20, fontWeight: '800', color: COLORS.primary, marginBottom: 4 },
+  slider: { width: '100%', height: 44, marginBottom: 8 },
   dateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -819,16 +810,8 @@ const styles = StyleSheet.create({
     borderRadius: SIZES.radius,
     padding: 14,
   },
-  dateBtnText: {
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    color: COLORS.gray[900],
-  },
-  timeRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 8,
-  },
+  dateBtnText: { fontSize: SIZES.md, fontWeight: '600', color: COLORS.gray[900] },
+  timeRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   timeCard: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -838,22 +821,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  timeCardActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#ECFDF5',
-  },
+  timeCardActive: { borderColor: COLORS.primary, backgroundColor: '#ECFDF5' },
   timeEmoji: { fontSize: 22, marginBottom: 4 },
-  timeTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.gray[800],
-  },
+  timeTitle: { fontSize: 13, fontWeight: '700', color: COLORS.gray[800] },
   timeTitleActive: { color: COLORS.primary },
-  timeSub: {
-    fontSize: 11,
-    color: COLORS.gray[500],
-    marginTop: 2,
-  },
+  timeSub: { fontSize: 11, color: COLORS.gray[500], marginTop: 2 },
   summaryCard: {
     backgroundColor: COLORS.white,
     borderRadius: 16,
@@ -867,24 +839,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.gray[100],
   },
-  summaryLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.gray[500],
-    marginBottom: 4,
-  },
-  summaryValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.gray[900],
-    lineHeight: 22,
-  },
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
-  },
+  summaryLabel: { fontSize: 12, fontWeight: '600', color: COLORS.gray[500], marginBottom: 4 },
+  summaryValue: { fontSize: 15, fontWeight: '600', color: COLORS.gray[900], lineHeight: 22 },
+  termsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   checkbox: {
     width: 24,
     height: 24,
@@ -894,16 +851,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  checkboxOn: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  termsText: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.gray[700],
-    lineHeight: 20,
-  },
+  checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  termsText: { flex: 1, fontSize: 14, color: COLORS.gray[700], lineHeight: 20 },
   footer: {
     position: 'absolute',
     left: 0,
@@ -924,14 +873,8 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 14,
   },
-  primaryBtnDisabled: {
-    backgroundColor: COLORS.gray[300],
-  },
-  primaryBtnText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
+  primaryBtnDisabled: { backgroundColor: COLORS.gray[300] },
+  primaryBtnText: { fontSize: 17, fontWeight: '700', color: COLORS.white },
   successRoot: {
     flex: 1,
     justifyContent: 'center',
@@ -968,11 +911,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginBottom: 16,
   },
-  coinsBannerText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#B45309',
-  },
+  coinsBannerText: { fontSize: 17, fontWeight: '800', color: '#B45309' },
   successBody: {
     fontSize: 15,
     color: COLORS.gray[600],
@@ -986,11 +925,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     borderRadius: 14,
   },
-  homeBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
+  homeBtnText: { fontSize: 16, fontWeight: '700', color: COLORS.white },
 });
 
 export default BookSiteVisitScreen;

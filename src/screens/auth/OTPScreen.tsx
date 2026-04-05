@@ -8,15 +8,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import Toast from 'react-native-toast-message';
 import { COLORS, SIZES, OTP_CONFIG } from '../../constants';
 import { authService } from '../../services';
+import { getErrorMessage } from '../../services/api';
 import { useAuthStore } from '../../stores';
+import type { UserData } from '../../stores/authStore';
 
 type AuthStackParamList = {
   Splash: undefined;
@@ -38,7 +40,7 @@ const OTPScreen: React.FC<Props> = ({ navigation, route }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [timer, setTimer] = useState(OTP_CONFIG.RESEND_TIMER);
   const [canResend, setCanResend] = useState(false);
-  
+
   const inputRefs = useRef<(TextInput | null)[]>([]);
   const { login } = useAuthStore();
 
@@ -91,21 +93,30 @@ const OTPScreen: React.FC<Props> = ({ navigation, route }) => {
   const handleVerifyOTP = async () => {
     const otpString = otp.join('');
     if (otpString.length !== OTP_CONFIG.LENGTH) {
-      Alert.alert('Invalid OTP', 'Please enter the complete 6-digit OTP');
+      Toast.show({ type: 'error', text1: 'Invalid OTP', text2: 'Please enter the complete 6-digit OTP' });
       return;
     }
 
     setIsLoading(true);
     try {
       const response = await authService.verifyOTP(phoneNumber, otpString);
-      
-      if (response.success && response.token) {
-        await login(response.token, phoneNumber);
+
+      if (response.success && response.token && response.user) {
+        const user: UserData = {
+          id: response.user.id,
+          name: response.user.name,
+          phone: response.user.phone,
+          referralCode: response.user.referralCode,
+          coins: response.user.coins,
+          role: response.user.role,
+        };
+        await login(response.token, phoneNumber, user);
+        Toast.show({ type: 'success', text1: 'Welcome!', text2: 'Login successful' });
       } else {
-        Alert.alert('Error', response.message || 'Invalid OTP. Please try again.');
+        Toast.show({ type: 'error', text1: 'Invalid OTP', text2: response.message || 'Please try again' });
       }
     } catch (error) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      Toast.show({ type: 'error', text1: 'Error', text2: getErrorMessage(error) });
     } finally {
       setIsLoading(false);
     }
@@ -122,12 +133,16 @@ const OTPScreen: React.FC<Props> = ({ navigation, route }) => {
         setCanResend(false);
         setOtp(new Array(OTP_CONFIG.LENGTH).fill(''));
         inputRefs.current[0]?.focus();
-        Alert.alert('Success', 'OTP sent successfully');
+        Toast.show({
+          type: 'success',
+          text1: 'OTP Sent',
+          text2: response.otp ? `DEV OTP: ${response.otp}` : 'Check your phone',
+        });
       } else {
-        Alert.alert('Error', response.message || 'Failed to resend OTP');
+        Toast.show({ type: 'error', text1: 'Error', text2: response.message || 'Failed to resend OTP' });
       }
     } catch (error) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      Toast.show({ type: 'error', text1: 'Error', text2: getErrorMessage(error) });
     } finally {
       setIsLoading(false);
     }

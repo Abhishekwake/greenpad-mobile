@@ -8,13 +8,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Toast from 'react-native-toast-message';
 import { COLORS, SIZES } from '../../constants';
 import { authService } from '../../services';
+import { getErrorMessage } from '../../services/api';
 import { useAuthStore } from '../../stores';
 
 type AuthStackParamList = {
@@ -28,6 +29,8 @@ type LoginScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, '
 interface Props {
   navigation: LoginScreenNavigationProp;
 }
+
+const REQUEST_TIMEOUT = 15000; // 15 seconds timeout for OTP
 
 const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -44,30 +47,41 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     setPhoneNumber(formatted);
   };
 
-  const validatePhoneNumber = (): boolean => {
-    if (phoneNumber.length !== 10) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
-      return false;
-    }
-    return true;
-  };
-
   const handleSendOTP = async () => {
-    if (!validatePhoneNumber()) return;
+    if (phoneNumber.length !== 10) {
+      Toast.show({ type: 'error', text1: 'Invalid Number', text2: 'Enter a valid 10-digit mobile number' });
+      return;
+    }
 
     setIsLoading(true);
+    
+    const timeoutId = setTimeout(() => {
+      setIsLoading(false);
+      Toast.show({ 
+        type: 'error', 
+        text1: 'Connection Slow', 
+        text2: 'Please check your WiFi and try again' 
+      });
+    }, REQUEST_TIMEOUT);
+
     try {
       const fullNumber = `+91${phoneNumber}`;
       const response = await authService.sendOTP(fullNumber);
       
+      clearTimeout(timeoutId);
+
       if (response.success) {
         savePhoneNumber(fullNumber);
+        if (response.otp) {
+          Toast.show({ type: 'info', text1: 'DEV OTP', text2: `Your OTP is ${response.otp}` });
+        }
         navigation.navigate('OTP', { phoneNumber: fullNumber });
       } else {
-        Alert.alert('Error', response.message || 'Failed to send OTP');
+        Toast.show({ type: 'error', text1: 'Error', text2: response.message || 'Failed to send OTP' });
       }
     } catch (error) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      clearTimeout(timeoutId);
+      Toast.show({ type: 'error', text1: 'Error', text2: getErrorMessage(error) });
     } finally {
       setIsLoading(false);
     }
@@ -110,7 +124,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
               editable={!isLoading}
             />
           </View>
-          
+
           <TouchableOpacity
             style={[
               styles.button,

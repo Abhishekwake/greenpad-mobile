@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, memo } from 'react';
+import React, { useState, useCallback, useMemo, memo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,36 +15,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withTiming,
   withSpring,
   FadeIn,
   FadeInDown,
   Layout,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SIZES } from '../../constants';
+import { walletService } from '../../services';
+import type { Transaction } from '../../services/wallet.service';
+import { getErrorMessage } from '../../services/api';
+import { ErrorRetry } from '../../components/ui';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type TransactionType = 'earn' | 'redeem';
-type TransactionStatus = 'completed' | 'pending';
 type TabType = 'all' | 'earned' | 'redeemed' | 'pending';
-
-interface Transaction {
-  id: number;
-  type: TransactionType;
-  amount: number;
-  description: string;
-  date: string;
-  status: TransactionStatus;
-}
-
-const TRANSACTIONS: Transaction[] = [
-  { id: 1, type: 'earn', amount: 200, description: 'Welcome bonus', date: '2024-04-01', status: 'completed' },
-  { id: 2, type: 'earn', amount: 300, description: 'Referral signup', date: '2024-04-02', status: 'completed' },
-  { id: 3, type: 'redeem', amount: -500, description: 'Free maintenance', date: '2024-04-03', status: 'completed' },
-  { id: 4, type: 'earn', amount: 500, description: 'Friend booked visit', date: '2024-04-04', status: 'pending' },
-];
 
 const TABS: { key: TabType; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -59,7 +46,7 @@ const formatRelativeDate = (dateString: string): string => {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays} days ago`;
@@ -70,29 +57,23 @@ const formatRelativeDate = (dateString: string): string => {
 
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 interface CoinDisplayProps {
   amount: number;
 }
 
-const CoinDisplay: React.FC<CoinDisplayProps> = memo(({ amount }) => {
-  return (
-    <Animated.View entering={FadeIn.delay(200).duration(500)} style={styles.coinDisplayContainer}>
-      <Text style={styles.coinLabel}>GreenCoins Balance</Text>
-      <View style={styles.coinRow}>
-        <Text style={styles.coinIcon}>🪙</Text>
-        <Text style={styles.coinAmount}>{amount.toLocaleString()}</Text>
-      </View>
-      <Text style={styles.coinSubtext}>Keep referring to earn more!</Text>
-    </Animated.View>
-  );
-});
+const CoinDisplay: React.FC<CoinDisplayProps> = memo(({ amount }) => (
+  <Animated.View entering={FadeIn.delay(200).duration(500)} style={styles.coinDisplayContainer}>
+    <Text style={styles.coinLabel}>GreenCoins Balance</Text>
+    <View style={styles.coinRow}>
+      <Text style={styles.coinIcon}>🪙</Text>
+      <Text style={styles.coinAmount}>{amount.toLocaleString()}</Text>
+    </View>
+    <Text style={styles.coinSubtext}>Keep referring to earn more!</Text>
+  </Animated.View>
+));
 
 interface TabBarProps {
   activeTab: TabType;
@@ -101,14 +82,10 @@ interface TabBarProps {
 
 const TabBar: React.FC<TabBarProps> = memo(({ activeTab, onTabChange }) => {
   const translateX = useSharedValue(0);
-  
-  const activeIndex = TABS.findIndex(t => t.key === activeTab);
-  
+  const activeIndex = TABS.findIndex((t) => t.key === activeTab);
+
   React.useEffect(() => {
-    translateX.value = withSpring(activeIndex * TAB_WIDTH, {
-      damping: 20,
-      stiffness: 200,
-    });
+    translateX.value = withSpring(activeIndex * TAB_WIDTH, { damping: 20, stiffness: 200 });
   }, [activeIndex, translateX]);
 
   const indicatorStyle = useAnimatedStyle(() => ({
@@ -130,12 +107,7 @@ const TabBar: React.FC<TabBarProps> = memo(({ activeTab, onTabChange }) => {
             onPress={() => handleTabPress(tab.key)}
             activeOpacity={0.7}
           >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === tab.key && styles.tabTextActive,
-              ]}
-            >
+            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -154,7 +126,7 @@ interface TransactionItemProps {
 const TransactionItem: React.FC<TransactionItemProps> = memo(({ item, index }) => {
   const isEarn = item.type === 'earn';
   const isPending = item.status === 'pending';
-  
+
   return (
     <Animated.View
       entering={FadeInDown.delay(index * 80).springify()}
@@ -162,7 +134,6 @@ const TransactionItem: React.FC<TransactionItemProps> = memo(({ item, index }) =
       style={styles.transactionItem}
     >
       <View style={styles.transactionContent}>
-        {/* Left Icon */}
         <View
           style={[
             styles.transactionIcon,
@@ -176,16 +147,14 @@ const TransactionItem: React.FC<TransactionItemProps> = memo(({ item, index }) =
           />
         </View>
 
-        {/* Center: Description + Date */}
         <View style={styles.transactionDetails}>
           <Text style={styles.transactionDescription}>{item.description}</Text>
           <View style={styles.transactionMeta}>
-            <Text style={styles.transactionDate}>{formatRelativeDate(item.date)}</Text>
-            <Text style={styles.transactionDateFull}> • {formatDate(item.date)}</Text>
+            <Text style={styles.transactionDate}>{formatRelativeDate(item.createdAt)}</Text>
+            <Text style={styles.transactionDateFull}> • {formatDate(item.createdAt)}</Text>
           </View>
         </View>
 
-        {/* Right: Amount */}
         <View style={styles.transactionRight}>
           <Text
             style={[
@@ -193,22 +162,11 @@ const TransactionItem: React.FC<TransactionItemProps> = memo(({ item, index }) =
               { color: isEarn ? COLORS.primary : '#EF4444' },
             ]}
           >
-            {isEarn ? '+' : ''}{item.amount.toLocaleString()}
+            {item.amount > 0 ? '+' : ''}{item.amount.toLocaleString()}
           </Text>
-          
-          {/* Status Badge */}
-          <View
-            style={[
-              styles.statusBadge,
-              isPending ? styles.statusPending : styles.statusCompleted,
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                isPending ? styles.statusTextPending : styles.statusTextCompleted,
-              ]}
-            >
+
+          <View style={[styles.statusBadge, isPending ? styles.statusPending : styles.statusCompleted]}>
+            <Text style={[styles.statusText, isPending ? styles.statusTextPending : styles.statusTextCompleted]}>
               {isPending ? 'Pending' : 'Completed'}
             </Text>
           </View>
@@ -232,33 +190,56 @@ const WalletScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [balance, setBalance] = useState({ coins: 0, totalEarned: 0, totalRedeemed: 0 });
 
-  const totalCoins = useMemo(() => {
-    return TRANSACTIONS
-      .filter(t => t.status === 'completed')
-      .reduce((sum, t) => sum + t.amount, 0);
+  const fetchData = useCallback(async () => {
+    try {
+      setError(null);
+      const [balData, txData] = await Promise.all([
+        walletService.getBalance(),
+        walletService.getTransactions(),
+      ]);
+      setBalance(balData);
+      setTransactions(txData.transactions);
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoading) fetchData();
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const filteredTransactions = useMemo(() => {
     switch (activeTab) {
       case 'earned':
-        return TRANSACTIONS.filter(t => t.type === 'earn' && t.status === 'completed');
+        return transactions.filter((t) => t.type === 'earn' && t.status === 'completed');
       case 'redeemed':
-        return TRANSACTIONS.filter(t => t.type === 'redeem');
+        return transactions.filter((t) => t.type === 'redeem');
       case 'pending':
-        return TRANSACTIONS.filter(t => t.status === 'pending');
+        return transactions.filter((t) => t.status === 'pending');
       default:
-        return TRANSACTIONS;
+        return transactions;
     }
-  }, [activeTab]);
+  }, [activeTab, transactions]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1500);
-  }, []);
+    fetchData();
+  }, [fetchData]);
 
   const renderTransaction = useCallback(
     ({ item, index }: { item: Transaction; index: number }) => (
@@ -267,7 +248,7 @@ const WalletScreen: React.FC = () => {
     []
   );
 
-  const keyExtractor = useCallback((item: Transaction) => item.id.toString(), []);
+  const keyExtractor = useCallback((item: Transaction) => item._id, []);
 
   const ListHeader = useMemo(
     () => (
@@ -281,24 +262,37 @@ const WalletScreen: React.FC = () => {
     [filteredTransactions.length]
   );
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (error && transactions.length === 0) {
+    return (
+      <View style={styles.container}>
+        <ErrorRetry message={error} onRetry={fetchData} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      
-      {/* Gold Gradient Header */}
+
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerDecor}>
           <View style={[styles.decorCircle, styles.decorCircle1]} />
           <View style={[styles.decorCircle, styles.decorCircle2]} />
           <View style={[styles.decorCircle, styles.decorCircle3]} />
         </View>
-        <CoinDisplay amount={totalCoins} />
+        <CoinDisplay amount={balance.coins} />
       </View>
 
-      {/* Tab Bar */}
       <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Transaction List */}
       <FlatList
         data={filteredTransactions}
         renderItem={renderTransaction}
@@ -307,6 +301,10 @@ const WalletScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={EmptyState}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        initialNumToRender={8}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -326,7 +324,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  // Header
   header: {
     backgroundColor: '#D97706',
     paddingBottom: 30,
@@ -347,26 +344,10 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
-  decorCircle1: {
-    width: 150,
-    height: 150,
-    top: -50,
-    right: -30,
-  },
-  decorCircle2: {
-    width: 100,
-    height: 100,
-    bottom: -20,
-    left: -20,
-  },
-  decorCircle3: {
-    width: 60,
-    height: 60,
-    top: 40,
-    left: 80,
-  },
+  decorCircle1: { width: 150, height: 150, top: -50, right: -30 },
+  decorCircle2: { width: 100, height: 100, bottom: -20, left: -20 },
+  decorCircle3: { width: 60, height: 60, top: 40, left: 80 },
 
-  // Coin Display
   coinDisplayContainer: {
     alignItems: 'center',
     paddingVertical: 20,
@@ -383,10 +364,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  coinIcon: {
-    fontSize: 40,
-    marginRight: 12,
-  },
+  coinIcon: { fontSize: 40, marginRight: 12 },
   coinAmount: {
     fontSize: 48,
     fontWeight: '800',
@@ -398,7 +376,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
   },
 
-  // Tab Bar
   tabContainer: {
     backgroundColor: COLORS.white,
     paddingTop: 16,
@@ -411,9 +388,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
   },
-  tabRow: {
-    flexDirection: 'row',
-  },
+  tabRow: { flexDirection: 'row' },
   tab: {
     width: TAB_WIDTH,
     paddingVertical: 12,
@@ -424,9 +399,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray[400],
   },
-  tabTextActive: {
-    color: COLORS.primary,
-  },
+  tabTextActive: { color: COLORS.primary },
   tabIndicator: {
     position: 'absolute',
     bottom: 0,
@@ -437,7 +410,6 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  // List
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 100,
@@ -459,7 +431,6 @@ const styles = StyleSheet.create({
     color: COLORS.gray[500],
   },
 
-  // Transaction Item
   transactionItem: {
     backgroundColor: COLORS.white,
     borderRadius: 16,
@@ -483,9 +454,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  transactionDetails: {
-    flex: 1,
-  },
+  transactionDetails: { flex: 1 },
   transactionDescription: {
     fontSize: 15,
     fontWeight: '600',
@@ -505,9 +474,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.gray[400],
   },
-  transactionRight: {
-    alignItems: 'flex-end',
-  },
+  transactionRight: { alignItems: 'flex-end' },
   transactionAmount: {
     fontSize: 18,
     fontWeight: '700',
@@ -518,24 +485,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  statusCompleted: {
-    backgroundColor: '#ECFDF5',
-  },
-  statusPending: {
-    backgroundColor: '#FEF3C7',
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  statusTextCompleted: {
-    color: COLORS.primary,
-  },
-  statusTextPending: {
-    color: '#D97706',
-  },
+  statusCompleted: { backgroundColor: '#ECFDF5' },
+  statusPending: { backgroundColor: '#FEF3C7' },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  statusTextCompleted: { color: COLORS.primary },
+  statusTextPending: { color: '#D97706' },
 
-  // Empty State
   emptyState: {
     alignItems: 'center',
     paddingVertical: 60,

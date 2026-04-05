@@ -1,83 +1,58 @@
 import api from './api';
 
+export interface UserData {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  referralCode: string;
+  coins: number;
+  role: string;
+  isNewUser?: boolean;
+}
+
 interface SendOTPResponse {
   success: boolean;
   message: string;
-  requestId?: string;
+  otp?: string; // returned only in dev mode
 }
 
 interface VerifyOTPResponse {
   success: boolean;
   message: string;
   token?: string;
-  user?: {
-    id: string;
-    phoneNumber: string;
-    name?: string;
-  };
+  user?: UserData;
 }
 
-const generateMockToken = (): string => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let token = '';
-  for (let i = 0; i < 64; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
-};
+interface ApplyReferralResponse {
+  success: boolean;
+  message: string;
+  coins?: number;
+}
 
 export const authService = {
-  sendOTP: async (phoneNumber: string): Promise<SendOTPResponse> => {
-    try {
-      const response = await api.post<SendOTPResponse>('/auth/send-otp', {
-        phoneNumber,
-      });
-      return response.data;
-    } catch (error) {
-      console.log('Using mock sendOTP response');
-      return {
-        success: true,
-        message: 'OTP sent successfully',
-        requestId: `req_${Date.now()}`,
-      };
-    }
+  sendOTP: async (phone: string): Promise<SendOTPResponse> => {
+    const digits = phone.replace(/\D/g, '').slice(-10);
+    const response = await api.post<SendOTPResponse>('/auth/send-otp', {
+      phone: digits,
+    });
+    return response.data;
   },
 
-  verifyOTP: async (phoneNumber: string, otp: string): Promise<VerifyOTPResponse> => {
-    try {
-      const response = await api.post<VerifyOTPResponse>('/auth/verify-otp', {
-        phoneNumber,
-        otp,
-      });
-      return response.data;
-    } catch (error) {
-      console.log('Using mock verifyOTP response');
-      if (otp.length === 6) {
-        return {
-          success: true,
-          message: 'OTP verified successfully',
-          token: generateMockToken(),
-          user: {
-            id: `user_${Date.now()}`,
-            phoneNumber,
-            name: 'GreenPad User',
-          },
-        };
-      }
-      return {
-        success: false,
-        message: 'Invalid OTP',
-      };
-    }
+  verifyOTP: async (phone: string, otp: string): Promise<VerifyOTPResponse> => {
+    const digits = phone.replace(/\D/g, '').slice(-10);
+    const response = await api.post<VerifyOTPResponse>('/auth/verify-otp', {
+      phone: digits,
+      otp,
+    });
+    return response.data;
   },
 
-  logout: async (): Promise<{ success: boolean }> => {
-    try {
-      await api.post('/auth/logout');
-      return { success: true };
-    } catch (error) {
-      return { success: true };
-    }
+  applyReferral: async (referralCode: string): Promise<ApplyReferralResponse> => {
+    const response = await api.post<ApplyReferralResponse>('/auth/apply-referral', {
+      referralCode,
+    });
+    return response.data;
   },
 };
 
