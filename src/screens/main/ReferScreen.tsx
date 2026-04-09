@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, memo, useEffect } from 'react';
+import React, { useState, useCallback, memo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,6 @@ import Animated, {
   withTiming,
   FadeIn,
   FadeInDown,
-  FadeInUp,
   ZoomIn,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -31,18 +30,31 @@ import Toast from 'react-native-toast-message';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '../../navigation/types';
-import { COLORS, SIZES } from '../../constants';
+import { COLORS } from '../../constants';
 import { referralService } from '../../services';
 import type { ReferralStats } from '../../services/referral.service';
 import { getErrorMessage } from '../../services/api';
 import { useAuthStore } from '../../stores';
 import { ErrorRetry } from '../../components/ui';
 
-/** App-install rewards are separate from referral-site-visit journey. */
-const STEPS = [
-  { emoji: '📲', title: 'Friend installs with your code (app install bonus)', coins: 200 },
-  { emoji: '📅', title: 'You book their site visit — survey completed', coins: 500 },
-  { emoji: '✅', title: 'Installation confirmed (solar live)', coins: 2000 },
+/** Refer tab header / accents (purple theme). */
+const REFER_HEADER_BG = '#5B21B6';
+const REFER_ACCENT = '#7C3AED';
+const REFER_SOFT = '#EDE9FE';
+const REFER_SOFT_BORDER = 'rgba(124, 58, 237, 0.35)';
+
+type RewardStep = { emoji: string; title: string; coins: number };
+
+/** Coins when you book a lead for someone else (backend createLead referral). */
+const SITE_VISIT_REFERRAL_STEPS: RewardStep[] = [
+  { emoji: '📝', title: 'Form filled for your referral', coins: 25 },
+  { emoji: '📅', title: 'Their home visit is done', coins: 500 },
+  { emoji: '✅', title: 'Solar installation complete', coins: 2000 },
+];
+
+/** App install only — not mixed with site-visit referral rewards. */
+const APP_INSTALL_STEPS: RewardStep[] = [
+  { emoji: '📲', title: 'They install using your code', coins: 200 },
 ];
 
 const APP_LINK = 'https://greenpad.app/download';
@@ -52,7 +64,9 @@ const getShareMessage = (code: string): string => {
 };
 
 const formatDate = (dateString: string): string => {
+  if (!dateString) return '—';
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
@@ -158,13 +172,14 @@ const ShareButton: React.FC<ShareButtonProps> = memo(({ onShare }) => {
 });
 
 interface StepItemProps {
-  step: (typeof STEPS)[0];
+  step: RewardStep;
   index: number;
+  baseDelay?: number;
 }
 
-const StepItem: React.FC<StepItemProps> = memo(({ step, index }) => (
+const StepItem: React.FC<StepItemProps> = memo(({ step, index, baseDelay = 400 }) => (
   <Animated.View
-    entering={FadeInDown.delay(400 + index * 100).springify()}
+    entering={FadeInDown.delay(baseDelay + index * 100).springify()}
     style={styles.stepItem}
   >
     <View style={styles.stepLeft}>
@@ -196,11 +211,11 @@ const ReferralItemUI: React.FC<ReferralItemUIProps> = memo(({ referral, index })
       <View style={styles.referralLeft}>
         <View style={styles.referralAvatar}>
           <Text style={styles.referralAvatarText}>
-            {(referral.name || referral.phone).charAt(0).toUpperCase()}
+            {(referral.name || referral.phone || '?').charAt(0).toUpperCase()}
           </Text>
         </View>
         <View style={styles.referralInfo}>
-          <Text style={styles.referralName}>{referral.name || referral.phone}</Text>
+          <Text style={styles.referralName}>{referral.name || referral.phone || 'Friend'}</Text>
           <Text style={styles.referralDate}>{formatDate(referral.joinedAt)}</Text>
         </View>
       </View>
@@ -215,20 +230,21 @@ const ReferralItemUI: React.FC<ReferralItemUIProps> = memo(({ referral, index })
 });
 
 const EmptyReferrals: React.FC = memo(() => (
-  <Animated.View entering={ZoomIn.delay(500)} style={styles.emptyState}>
+  <Animated.View entering={ZoomIn.delay(200)} style={styles.emptyState}>
     <View style={styles.emptyIllustration}>
-      <Text style={styles.emptyEmoji}>🤝</Text>
+      <Ionicons name="people-outline" size={40} color={COLORS.gray[400]} />
     </View>
-    <Text style={styles.emptyTitle}>No referrals yet</Text>
-    <Text style={styles.emptySubtitle}>
-      Share your code with friends and family to start earning!
-    </Text>
+    <Text style={styles.emptyTitle}>No installs yet</Text>
+    <Text style={styles.emptySubtitle}>Share your code above to invite friends.</Text>
   </Animated.View>
 ));
+
+type ReferActivePath = 'hub' | 'site_visit' | 'app_install';
 
 const ReferScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const [activePath, setActivePath] = useState<ReferActivePath>('hub');
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -299,10 +315,37 @@ const ReferScreen: React.FC = () => {
     fetchStats();
   }, [fetchStats]);
 
+  const goBookReferralVisit = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const parent = navigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
+    parent?.navigate('BookSiteVisit', { mode: 'referral' });
+  }, [navigation]);
+
+  const goMyLeads = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const parent = navigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
+    parent?.navigate('MyLeads');
+  }, [navigation]);
+
+  const goBackToHub = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActivePath('hub');
+  }, []);
+
   if (isLoading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={[styles.headerGradient, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.headerDecor}>
+            <View style={[styles.hDecorCircle, styles.hDecorCircle1]} />
+            <View style={[styles.hDecorCircle, styles.hDecorCircle2]} />
+          </View>
+          <Text style={styles.greeting}>Refer & earn</Text>
+        </View>
+        <View style={[styles.loadingBody, { paddingTop: insets.top + 120 }]}>
+          <ActivityIndicator size="large" color={REFER_ACCENT} />
+        </View>
       </View>
     );
   }
@@ -310,7 +353,17 @@ const ReferScreen: React.FC = () => {
   if (error && !stats) {
     return (
       <View style={styles.container}>
-        <ErrorRetry message={error} onRetry={fetchStats} />
+        <StatusBar style="light" />
+        <View style={[styles.headerGradient, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.headerDecor}>
+            <View style={[styles.hDecorCircle, styles.hDecorCircle1]} />
+            <View style={[styles.hDecorCircle, styles.hDecorCircle2]} />
+          </View>
+          <Text style={styles.greeting}>Refer & earn</Text>
+        </View>
+        <View style={styles.errorBody}>
+          <ErrorRetry message={error} onRetry={fetchStats} />
+        </View>
       </View>
     );
   }
@@ -318,94 +371,195 @@ const ReferScreen: React.FC = () => {
   const referrals = stats?.referrals ?? [];
   const totalEarned = stats?.totalReferralEarnings ?? 0;
 
+  const siteVisitMaxCoins =
+    SITE_VISIT_REFERRAL_STEPS.reduce((s, x) => s + x.coins, 0) || 0;
+
+  const renderHub = () => (
+    <>
+      <Animated.View entering={FadeIn.delay(120).duration(400)}>
+        <TouchableOpacity
+          style={[styles.pathChoiceCard, styles.pathChoiceCardPrimary]}
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setActivePath('site_visit');
+          }}
+          activeOpacity={0.92}
+        >
+          <View style={styles.pathChoiceAccent} />
+          <View style={styles.pathChoiceIconWrap}>
+            <Ionicons name="calendar" size={24} color={REFER_ACCENT} />
+          </View>
+          <View style={styles.pathChoiceTextCol}>
+            <Text style={styles.pathChoiceBadge}>For someone you know</Text>
+            <Text style={styles.pathChoiceTitle}>Book a visit for them</Text>
+            <Text style={styles.pathChoiceSubtitle}>
+              You fill the form · Linked to you · Check status anytime
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.gray[400]} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.pathChoiceCard}
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActivePath('app_install');
+          }}
+          activeOpacity={0.92}
+        >
+          <View style={[styles.pathChoiceIconWrap, styles.pathChoiceIconWrapMuted]}>
+            <Ionicons name="share-social-outline" size={24} color={REFER_ACCENT} />
+          </View>
+          <View style={styles.pathChoiceTextCol}>
+            <Text style={styles.pathChoiceTitle}>Share the app</Text>
+            <Text style={styles.pathChoiceSubtitle}>Code & link · WhatsApp · Small reward per install</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.gray[400]} />
+        </TouchableOpacity>
+      </Animated.View>
+    </>
+  );
+
+  const renderSiteVisitPath = () => (
+    <>
+      <Animated.View entering={FadeInDown.delay(60).springify()} style={styles.surfaceCard}>
+        <Text style={styles.surfaceTitle}>What this is</Text>
+        <Text style={[styles.surfaceBody, styles.surfaceBodySolo]}>
+          Fill out the visit booking for a friend or family member. It stays on your account. You earn
+          coins step by step — from sending the form to when their solar is fully installed.
+        </Text>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.section}>
+        <Text style={[styles.sectionTitle, styles.sectionTitleTight]}>How you earn</Text>
+        <View style={styles.stepsContainer}>
+          {SITE_VISIT_REFERRAL_STEPS.map((step, index) => (
+            <StepItem key={index} step={step} index={index} baseDelay={160} />
+          ))}
+        </View>
+        <View style={styles.totalBanner}>
+          <Text style={styles.totalBannerText}>
+            Up to{' '}
+            <Text style={styles.totalBannerHighlight}>{siteVisitMaxCoins.toLocaleString()} coins</Text> when
+            all milestones complete
+          </Text>
+        </View>
+      </Animated.View>
+
+      <TouchableOpacity style={styles.referralBookBtn} onPress={goBookReferralVisit} activeOpacity={0.9}>
+        <Text style={styles.referralBookBtnText}>Start booking</Text>
+        <Ionicons name="arrow-forward" size={18} color={COLORS.white} style={styles.btnIconAfter} />
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.secondaryBtn} onPress={goMyLeads} activeOpacity={0.9}>
+        <Ionicons name="list-outline" size={20} color={REFER_ACCENT} />
+        <Text style={[styles.secondaryBtnText, styles.secondaryBtnTextAfter]}>My visits</Text>
+      </TouchableOpacity>
+    </>
+  );
+
+  const renderAppInstallPath = () => (
+    <>
+      <Animated.View entering={FadeInDown.delay(60).springify()} style={styles.surfaceCard}>
+        <Text style={styles.surfaceTitle}>What this is</Text>
+        <Text style={styles.surfaceBody}>
+          Send your code. When someone installs GreenPad and signs up with your code, you get the install
+          reward.
+        </Text>
+        <Text style={styles.surfaceFine}>
+          Want to book a visit for someone else? Go back and tap Book a visit for them.
+        </Text>
+      </Animated.View>
+
+      <ReferralCodeCard code={referralCode} onCopy={handleCopyCode} />
+      <ShareButton onShare={handleShare} />
+
+      <Animated.View entering={FadeInDown.delay(160).springify()} style={styles.section}>
+        <Text style={[styles.sectionTitle, styles.sectionTitleTight]}>Install reward</Text>
+        <View style={styles.stepsContainer}>
+          {APP_INSTALL_STEPS.map((step, index) => (
+            <StepItem key={index} step={step} index={index} baseDelay={200} />
+          ))}
+        </View>
+        <View style={[styles.totalBanner, styles.totalBannerMuted]}>
+          <Text style={styles.totalBannerText}>
+            Bigger rewards are on the other option:{' '}
+            <Text style={styles.totalBannerHighlight}>Book a visit for them</Text> on the first screen.
+          </Text>
+        </View>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(240).springify()} style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, styles.sectionTitleTight]}>Joined with your code</Text>
+          {referrals.length > 0 && (
+            <View style={styles.totalEarnedBadge}>
+              <Text style={styles.totalEarnedText}>+{totalEarned.toLocaleString()} 🪙</Text>
+            </View>
+          )}
+        </View>
+
+        {referrals.length > 0 ? (
+          <View style={styles.referralsList}>
+            {referrals.map((referral, index) => (
+              <ReferralItemUI key={index} referral={referral} index={index} />
+            ))}
+          </View>
+        ) : (
+          <EmptyReferrals />
+        )}
+      </Animated.View>
+    </>
+  );
+
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
+
+      <View style={[styles.headerGradient, { paddingTop: insets.top + 16 }]}>
+        <View style={styles.headerDecor}>
+          <View style={[styles.hDecorCircle, styles.hDecorCircle1]} />
+          <View style={[styles.hDecorCircle, styles.hDecorCircle2]} />
+          <View style={[styles.hDecorCircle, styles.hDecorCircle3]} />
+        </View>
+        {activePath === 'hub' ? (
+          <View>
+            <Text style={styles.greeting}>Refer & earn</Text>
+            <Text style={styles.subGreeting}>Pick one — both are simple</Text>
+          </View>
+        ) : (
+          <View style={styles.headerDetailRow}>
+            <TouchableOpacity style={styles.headerBackBtn} onPress={goBackToHub} activeOpacity={0.85}>
+              <Ionicons name="chevron-back" size={26} color={COLORS.white} />
+            </TouchableOpacity>
+            <View style={styles.headerDetailTitles}>
+              <Text style={styles.greeting}>
+                {activePath === 'site_visit' ? 'Book for them' : 'Share app'}
+              </Text>
+              <Text style={styles.subGreeting}>
+                {activePath === 'site_visit' ? 'Form for your referral' : 'Your code & link'}
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20 }]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={COLORS.primary}
-            colors={[COLORS.primary]}
+            tintColor={REFER_ACCENT}
+            colors={[REFER_ACCENT]}
           />
         }
       >
-        <Animated.View entering={FadeIn.delay(100)} style={styles.header}>
-          <Text style={styles.title}>Refer & Earn Rewards</Text>
-          <Text style={styles.subtitle}>Share solar with friends, earn together</Text>
-        </Animated.View>
-
-        <ReferralCodeCard code={referralCode} onCopy={handleCopyCode} />
-
-        <ShareButton onShare={handleShare} />
-
-        <Animated.View entering={FadeInDown.delay(280).springify()} style={styles.referralBookCard}>
-          <View style={styles.referralBookRow}>
-            <View style={styles.referralBookIconWrap}>
-              <Ionicons name="person-add" size={24} color={COLORS.primary} />
-            </View>
-            <View style={styles.referralBookTextCol}>
-              <Text style={styles.referralBookTitle}>Book site visit for a referred person</Text>
-              <Text style={styles.referralBookSubtitle}>
-                Same guided steps as your own booking — for someone else. Linked to you for visit &
-                installation rewards. Not the same as sharing your install code.
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            style={styles.referralBookBtn}
-            onPress={async () => {
-              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              const parent = navigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
-              parent?.navigate('BookSiteVisit', { mode: 'referral' });
-            }}
-            activeOpacity={0.88}
-          >
-            <Text style={styles.referralBookBtnText}>Book for referred person</Text>
-            <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(350).springify()} style={styles.section}>
-          <Text style={styles.sectionTitle}>How It Works</Text>
-          <View style={styles.stepsContainer}>
-            {STEPS.map((step, index) => (
-              <StepItem key={index} step={step} index={index} />
-            ))}
-          </View>
-          <View style={styles.totalBanner}>
-            <Text style={styles.totalBannerText}>
-              Up to <Text style={styles.totalBannerHighlight}>2,700 coins</Text> on the referral visit
-              journey (plus separate app-install bonuses)
-            </Text>
-          </View>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(650).springify()} style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Referrals</Text>
-            {referrals.length > 0 && (
-              <View style={styles.totalEarnedBadge}>
-                <Text style={styles.totalEarnedText}>+{totalEarned.toLocaleString()} 🪙</Text>
-              </View>
-            )}
-          </View>
-
-          {referrals.length > 0 ? (
-            <View style={styles.referralsList}>
-              {referrals.map((referral, index) => (
-                <ReferralItemUI key={index} referral={referral} index={index} />
-              ))}
-            </View>
-          ) : (
-            <EmptyReferrals />
-          )}
-        </Animated.View>
+        {activePath === 'hub' && renderHub()}
+        {activePath === 'site_visit' && renderSiteVisitPath()}
+        {activePath === 'app_install' && renderAppInstallPath()}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -418,33 +572,218 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  scrollView: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20 },
 
-  header: { marginBottom: 24 },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: COLORS.gray[900],
-    marginBottom: 8,
+  headerGradient: {
+    backgroundColor: REFER_HEADER_BG,
+    paddingHorizontal: 20,
+    paddingBottom: 56,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
   },
-  subtitle: {
+  headerDecor: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  hDecorCircle: {
+    position: 'absolute',
+    borderRadius: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  hDecorCircle1: { width: 140, height: 140, top: -50, right: -40 },
+  hDecorCircle2: { width: 90, height: 90, bottom: -10, left: -20 },
+  hDecorCircle3: { width: 56, height: 56, top: 28, left: '42%' },
+
+  greeting: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.white,
+    marginBottom: 4,
+  },
+  subGreeting: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontWeight: '500',
+  },
+  headerDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerBackBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  headerDetailTitles: {
+    flex: 1,
+  },
+
+  scrollView: {
+    flex: 1,
+    marginTop: -36,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+  },
+
+  loadingBody: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorBody: {
+    flex: 1,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+  },
+
+  surfaceCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 18,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  surfaceTitle: {
     fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.gray[900],
+    marginBottom: 10,
+  },
+  surfaceBody: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: COLORS.gray[700],
+    lineHeight: 23,
+    marginBottom: 10,
+  },
+  surfaceFine: {
+    fontSize: 14,
+    color: COLORS.gray[600],
+    lineHeight: 21,
+    marginTop: 4,
+  },
+  surfaceBodySolo: {
+    marginBottom: 0,
+  },
+
+  pathChoiceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  pathChoiceCardPrimary: {
+    borderColor: REFER_SOFT_BORDER,
+  },
+  pathChoiceAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: REFER_ACCENT,
+  },
+  pathChoiceIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: REFER_SOFT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 4,
+    marginRight: 14,
+  },
+  pathChoiceIconWrapMuted: {
+    backgroundColor: COLORS.gray[50],
+  },
+  pathChoiceTextCol: {
+    flex: 1,
+    marginRight: 8,
+  },
+  pathChoiceBadge: {
+    alignSelf: 'flex-start',
+    fontSize: 11,
+    fontWeight: '700',
+    color: REFER_ACCENT,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  pathChoiceTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.gray[900],
+    marginBottom: 4,
+  },
+  pathChoiceSubtitle: {
+    fontSize: 13,
     color: COLORS.gray[500],
+    lineHeight: 18,
+  },
+
+  sectionTitleTight: {
+    marginBottom: 12,
+  },
+
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: REFER_ACCENT,
+    backgroundColor: COLORS.white,
+  },
+  secondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: REFER_ACCENT,
+  },
+  secondaryBtnTextAfter: {
+    marginLeft: 8,
+  },
+  btnIconAfter: {
+    marginLeft: 8,
+  },
+
+  totalBannerMuted: {
+    backgroundColor: COLORS.gray[50],
   },
 
   codeCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 20,
+    borderRadius: 16,
+    padding: 22,
+    marginBottom: 16,
     alignItems: 'center',
     overflow: 'hidden',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   codeCardDecor: {
     position: 'absolute',
@@ -460,14 +799,14 @@ const styles = StyleSheet.create({
   decorCircle1: {
     width: 120,
     height: 120,
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
     top: -40,
     right: -40,
   },
   decorCircle2: {
     width: 80,
     height: 80,
-    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    backgroundColor: 'rgba(91, 33, 182, 0.1)',
     bottom: -30,
     left: -30,
   },
@@ -498,7 +837,7 @@ const styles = StyleSheet.create({
   copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primary,
+    backgroundColor: REFER_ACCENT,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -531,49 +870,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 12,
   },
-  referralBookCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  referralBookRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
-  referralBookIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#ECFDF5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  referralBookTextCol: { flex: 1 },
-  referralBookTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.gray[900],
-    marginBottom: 6,
-  },
-  referralBookSubtitle: {
-    fontSize: 13,
-    color: COLORS.gray[500],
-    lineHeight: 19,
-  },
   referralBookBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 14,
+    backgroundColor: REFER_ACCENT,
+    paddingVertical: 15,
     borderRadius: 14,
+    marginTop: 6,
+    shadowColor: REFER_ACCENT,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   referralBookBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
   otherShareButton: {
@@ -597,13 +906,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: COLORS.gray[900],
     marginBottom: 16,
   },
   totalEarnedBadge: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: REFER_SOFT,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -612,7 +921,7 @@ const styles = StyleSheet.create({
   totalEarnedText: {
     fontSize: 14,
     fontWeight: '700',
-    color: COLORS.primary,
+    color: REFER_ACCENT,
   },
 
   stepsContainer: {
@@ -638,7 +947,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: COLORS.gray[50],
+    backgroundColor: REFER_SOFT,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -654,7 +963,7 @@ const styles = StyleSheet.create({
   stepCoinsText: {
     fontSize: 18,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: REFER_ACCENT,
   },
   stepCoinsLabel: {
     fontSize: 11,
@@ -662,7 +971,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   totalBanner: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: REFER_SOFT,
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 12,
@@ -675,7 +984,7 @@ const styles = StyleSheet.create({
   },
   totalBannerHighlight: {
     fontWeight: '800',
-    color: COLORS.primary,
+    color: REFER_ACCENT,
   },
 
   referralsList: { gap: 12 },
@@ -700,7 +1009,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: COLORS.primary,
+    backgroundColor: REFER_ACCENT,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -739,15 +1048,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   emptyIllustration: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: COLORS.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  emptyEmoji: { fontSize: 48 },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
