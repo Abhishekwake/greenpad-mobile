@@ -26,14 +26,32 @@ import { getErrorMessage } from '../../services/api';
 import { ErrorRetry } from '../../components/ui';
 import type { MainStackParamList } from '../../navigation/types';
 
-const STATUSES = ['pending', 'contacted', 'visited', 'converted'] as const;
+/** Pipeline order in DB; users never see "converted" wording — only "Installation Confirmed". */
+const PIPELINE = ['pending', 'contacted', 'visited', 'converted'] as const;
+
+function normalizeLeadStatus(status: string): string {
+  if (status === 'rejected') return 'cancelled';
+  return status;
+}
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending: { label: 'Pending', color: '#D97706', bg: '#FEF3C7', icon: 'time-outline' },
   contacted: { label: 'Contacted', color: '#2563EB', bg: '#EFF6FF', icon: 'call-outline' },
   visited: { label: 'Visited', color: '#7C3AED', bg: '#F5F3FF', icon: 'eye-outline' },
-  converted: { label: 'Converted', color: '#059669', bg: '#ECFDF5', icon: 'checkmark-circle-outline' },
-  rejected: { label: 'Cancelled', color: '#DC2626', bg: '#FEF2F2', icon: 'close-circle-outline' },
+  converted: {
+    label: 'Installation Confirmed',
+    color: '#059669',
+    bg: '#ECFDF5',
+    icon: 'checkmark-circle-outline',
+  },
+  cancelled: { label: 'Cancelled', color: '#DC2626', bg: '#FEF2F2', icon: 'close-circle-outline' },
+};
+
+const PIPELINE_LABEL: Record<(typeof PIPELINE)[number], string> = {
+  pending: 'Pending',
+  contacted: 'Contacted',
+  visited: 'Visited',
+  converted: 'Installation Confirmed',
 };
 
 const PROPERTY_EMOJI: Record<string, string> = {
@@ -57,23 +75,38 @@ const formatDate = (d: string): string => {
   });
 };
 
-const canModify = (status: string) => ['pending', 'contacted'].includes(status);
+const canModify = (status: string) => {
+  const s = normalizeLeadStatus(status);
+  return ['pending', 'contacted'].includes(s);
+};
 
 const ProgressTracker: React.FC<{ currentStatus: string }> = memo(({ currentStatus }) => {
-  const isRejected = currentStatus === 'rejected';
-  const currentIdx = isRejected ? -1 : STATUSES.indexOf(currentStatus as typeof STATUSES[number]);
+  const s = normalizeLeadStatus(currentStatus);
+  const isTerminalCancelled = s === 'cancelled';
+
+  if (isTerminalCancelled) {
+    return (
+      <View style={ptStyles.cancelledBanner}>
+        <Ionicons name="close-circle" size={20} color="#DC2626" />
+        <Text style={ptStyles.cancelledText}>This visit was cancelled</Text>
+      </View>
+    );
+  }
+
+  const rawIdx = PIPELINE.indexOf(s as (typeof PIPELINE)[number]);
+  const currentIdx = rawIdx >= 0 ? rawIdx : 0;
 
   return (
     <View style={ptStyles.container}>
-      {STATUSES.map((status, idx) => {
-        const isPast = !isRejected && idx < currentIdx;
-        const isCurrent = !isRejected && idx === currentIdx;
-        const isFuture = isRejected || idx > currentIdx;
-        const isLast = idx === STATUSES.length - 1;
-        const meta = STATUS_META[status];
+      {PIPELINE.map((statusKey, idx) => {
+        const isPast = idx < currentIdx;
+        const isCurrent = idx === currentIdx;
+        const isFuture = idx > currentIdx;
+        const isLast = idx === PIPELINE.length - 1;
+        const label = PIPELINE_LABEL[statusKey];
 
         return (
-          <View key={status} style={ptStyles.stepRow}>
+          <View key={statusKey} style={ptStyles.stepRow}>
             <View style={ptStyles.dotColumn}>
               <View
                 style={[
@@ -103,7 +136,7 @@ const ProgressTracker: React.FC<{ currentStatus: string }> = memo(({ currentStat
                 isCurrent && ptStyles.labelCurrent,
               ]}
             >
-              {meta.label}
+              {label}
             </Text>
           </View>
         );
@@ -131,6 +164,16 @@ const ptStyles = StyleSheet.create({
   label: { fontSize: 13, color: COLORS.gray[400], marginLeft: 10, marginTop: 1, fontWeight: '500' },
   labelActive: { color: COLORS.gray[700] },
   labelCurrent: { fontWeight: '700', color: COLORS.primary },
+  cancelledBanner: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 12,
+  },
+  cancelledText: { fontSize: 14, fontWeight: '600', color: '#991B1B', flex: 1 },
 });
 
 interface LeadCardProps {
@@ -141,8 +184,10 @@ interface LeadCardProps {
 }
 
 const LeadCard: React.FC<LeadCardProps> = memo(({ item, index, onReschedule, onCancel }) => {
-  const meta = STATUS_META[item.status] || STATUS_META.pending;
+  const norm = normalizeLeadStatus(item.status);
+  const meta = STATUS_META[norm] || STATUS_META.pending;
   const showActions = canModify(item.status);
+  const isReferral = item.leadType === 'referral';
 
   return (
     <Animated.View entering={FadeInDown.delay(index * 80).springify()}>
@@ -153,7 +198,13 @@ const LeadCard: React.FC<LeadCardProps> = memo(({ item, index, onReschedule, onC
               {PROPERTY_EMOJI[item.propertyType] || '🏠'}
             </Text>
             <View style={styles.cardTitleContent}>
+              {isReferral && (
+                <View style={styles.referralChip}>
+                  <Text style={styles.referralChipText}>Referred person’s visit</Text>
+                </View>
+              )}
               <Text style={styles.cardName}>{item.name}</Text>
+              <Text style={styles.cardPhone}>{item.phone}</Text>
               <Text style={styles.cardAddress} numberOfLines={1}>{item.address}</Text>
             </View>
           </View>
@@ -393,7 +444,7 @@ const MyLeadsScreen: React.FC = () => {
             </Text>
             <TouchableOpacity
               style={styles.emptyCta}
-              onPress={() => navigation.navigate('BookSiteVisit')}
+              onPress={() => navigation.navigate('BookSiteVisit', { mode: 'self' })}
               activeOpacity={0.85}
             >
               <Ionicons name="add-circle" size={20} color={COLORS.white} />
@@ -506,7 +557,17 @@ const styles = StyleSheet.create({
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
   propertyEmoji: { fontSize: 28, marginRight: 12 },
   cardTitleContent: { flex: 1 },
+  referralChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  referralChipText: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
   cardName: { fontSize: 16, fontWeight: '700', color: COLORS.gray[900], marginBottom: 2 },
+  cardPhone: { fontSize: 13, color: COLORS.gray[600], marginBottom: 4, fontWeight: '500' },
   cardAddress: { fontSize: 13, color: COLORS.gray[500] },
   statusBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

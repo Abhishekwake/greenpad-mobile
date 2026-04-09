@@ -436,9 +436,13 @@ const HomeScreen: React.FC = () => {
   const userCoins = dashboard?.user?.coins ?? userData?.coins ?? 0;
 
   const navigateToStack = useCallback(
-    (screen: keyof MainStackParamList) => {
+    (screen: keyof MainStackParamList, params?: MainStackParamList[keyof MainStackParamList]) => {
       const parent = tabNavigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
-      parent?.navigate(screen as any);
+      if (params !== undefined) {
+        parent?.navigate(screen as any, params as any);
+      } else {
+        parent?.navigate(screen as any);
+      }
     },
     [tabNavigation]
   );
@@ -458,7 +462,7 @@ const HomeScreen: React.FC = () => {
       title: 'Book Site Visit',
       icon: 'calendar',
       gradient: ['#3B82F6', '#1D4ED8'],
-      onPress: () => navigateToStack('BookSiteVisit'),
+      onPress: () => navigateToStack('BookSiteVisit', { mode: 'self' }),
     };
   }, [activeLead, navigateToStack]);
 

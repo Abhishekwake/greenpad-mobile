@@ -7,6 +7,16 @@ const leadSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    leadType: {
+      type: String,
+      enum: ['self', 'referral'],
+      default: 'self',
+    },
+    relationshipNote: {
+      type: String,
+      maxlength: [200, 'Relationship note too long'],
+      default: '',
+    },
     name: {
       type: String,
       required: [true, 'Lead name is required'],
@@ -45,7 +55,7 @@ const leadSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'contacted', 'visited', 'converted', 'rejected'],
+      enum: ['pending', 'contacted', 'visited', 'converted', 'cancelled', 'not_converted', 'rejected'],
       default: 'pending',
     },
     assignedTo: {

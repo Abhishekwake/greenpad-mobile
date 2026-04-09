@@ -1,5 +1,19 @@
 require('dotenv').config();
+const os = require('os');
 const express = require('express');
+
+function getLanIPv4() {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      const v4 = net.family === 'IPv4' || net.family === 4;
+      if (v4 && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return null;
+}
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -73,9 +87,12 @@ const start = async () => {
   await connectDB();
   await seedRewards();
   app.listen(PORT, '0.0.0.0', () => {
+    const lan = getLanIPv4();
     console.log(`Server running in ${process.env.NODE_ENV} on port ${PORT}`);
     console.log(`Health: http://localhost:${PORT}/api/health`);
-    console.log(`Network: http://192.168.1.104:${PORT}/api/health`);
+    if (lan) {
+      console.log(`Network (phones): http://${lan}:${PORT}/api/health`);
+    }
   });
 };
 

@@ -28,7 +28,9 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import Toast from 'react-native-toast-message';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { MainStackParamList } from '../../navigation/types';
 import { COLORS, SIZES } from '../../constants';
 import { referralService } from '../../services';
 import type { ReferralStats } from '../../services/referral.service';
@@ -36,10 +38,11 @@ import { getErrorMessage } from '../../services/api';
 import { useAuthStore } from '../../stores';
 import { ErrorRetry } from '../../components/ui';
 
+/** App-install rewards are separate from referral-site-visit journey. */
 const STEPS = [
-  { emoji: '👤', title: 'Friend installs using your code', coins: 300 },
-  { emoji: '📅', title: 'They book a site visit', coins: 500 },
-  { emoji: '💰', title: 'They go solar', coins: 2000 },
+  { emoji: '📲', title: 'Friend installs with your code (app install bonus)', coins: 200 },
+  { emoji: '📅', title: 'You book their site visit — survey completed', coins: 500 },
+  { emoji: '✅', title: 'Installation confirmed (solar live)', coins: 2000 },
 ];
 
 const APP_LINK = 'https://greenpad.app/download';
@@ -225,6 +228,7 @@ const EmptyReferrals: React.FC = memo(() => (
 
 const ReferScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -340,6 +344,33 @@ const ReferScreen: React.FC = () => {
 
         <ShareButton onShare={handleShare} />
 
+        <Animated.View entering={FadeInDown.delay(280).springify()} style={styles.referralBookCard}>
+          <View style={styles.referralBookRow}>
+            <View style={styles.referralBookIconWrap}>
+              <Ionicons name="person-add" size={24} color={COLORS.primary} />
+            </View>
+            <View style={styles.referralBookTextCol}>
+              <Text style={styles.referralBookTitle}>Book site visit for a referred person</Text>
+              <Text style={styles.referralBookSubtitle}>
+                Same guided steps as your own booking — for someone else. Linked to you for visit &
+                installation rewards. Not the same as sharing your install code.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.referralBookBtn}
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const parent = navigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
+              parent?.navigate('BookSiteVisit', { mode: 'referral' });
+            }}
+            activeOpacity={0.88}
+          >
+            <Text style={styles.referralBookBtnText}>Book for referred person</Text>
+            <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+          </TouchableOpacity>
+        </Animated.View>
+
         <Animated.View entering={FadeInDown.delay(350).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>How It Works</Text>
           <View style={styles.stepsContainer}>
@@ -349,7 +380,8 @@ const ReferScreen: React.FC = () => {
           </View>
           <View style={styles.totalBanner}>
             <Text style={styles.totalBannerText}>
-              Earn up to <Text style={styles.totalBannerHighlight}>2,800 coins</Text> per referral!
+              Up to <Text style={styles.totalBannerHighlight}>2,700 coins</Text> on the referral visit
+              journey (plus separate app-install bonuses)
             </Text>
           </View>
         </Animated.View>
@@ -499,6 +531,51 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 12,
   },
+  referralBookCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  referralBookRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
+  referralBookIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  referralBookTextCol: { flex: 1 },
+  referralBookTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.gray[900],
+    marginBottom: 6,
+  },
+  referralBookSubtitle: {
+    fontSize: 13,
+    color: COLORS.gray[500],
+    lineHeight: 19,
+  },
+  referralBookBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  referralBookBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
   otherShareButton: {
     flexDirection: 'row',
     alignItems: 'center',

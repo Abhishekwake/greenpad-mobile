@@ -79,7 +79,7 @@ const VideoReelScreen: React.FC = () => {
   }, [navigation]);
 
   const handleBookPress = useCallback(() => {
-    navigation.navigate('BookSiteVisit');
+    navigation.navigate('BookSiteVisit', { mode: 'self' });
   }, [navigation]);
 
   const renderItem = useCallback(

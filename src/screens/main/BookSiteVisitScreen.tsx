@@ -11,12 +11,12 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
@@ -66,32 +66,50 @@ function isDateAtLeastTomorrow(d: Date): boolean {
 const propertyTypeEnum = z.enum(['residential', 'commercial', 'industrial', 'agricultural']);
 const timeSlotEnum = z.enum(['morning', 'afternoon', 'evening']);
 
-const bookingSchema = z.object({
-  fullName: z.string().min(3, 'At least 3 characters'),
-  phone: z.string().min(8, 'Phone number required'),
-  email: z
-    .string()
-    .trim()
-    .refine((s) => s === '' || z.string().email().safeParse(s).success, {
-      message: 'Enter a valid email or leave blank',
+function buildBookingSchema(_mode: 'self' | 'referral') {
+  return z.object({
+    fullName: z.string().min(3, 'At least 3 characters'),
+    phone: z.string().refine((s) => {
+      const d = s.replace(/\D/g, '').slice(-10);
+      return d.length === 10;
+    }, 'Enter a valid 10-digit mobile number'),
+    email: z
+      .string()
+      .trim()
+      .refine((s) => s === '' || z.string().email().safeParse(s).success, {
+        message: 'Enter a valid email or leave blank',
+      }),
+    address: z.string().min(10, 'Please enter full address (min 10 characters)'),
+    propertyType: propertyTypeEnum,
+    roofAreaSqFt: z.number().min(100).max(5000),
+    preferredDate: z.date().refine((d) => isDateAtLeastTomorrow(d), {
+      message: 'Choose tomorrow or a later date',
     }),
-  address: z.string().min(10, 'Please enter full address (min 10 characters)'),
-  propertyType: propertyTypeEnum,
-  roofAreaSqFt: z.number().min(100).max(5000),
-  preferredDate: z.date().refine((d) => isDateAtLeastTomorrow(d), {
-    message: 'Choose tomorrow or a later date',
-  }),
-  timeSlot: timeSlotEnum,
-  notes: z.string(),
-  agreeToTerms: z.boolean().refine((v) => v === true, {
-    message: 'Please agree to the terms to continue',
-  }),
-});
+    timeSlot: timeSlotEnum,
+    notes: z.string(),
+    relationshipNote: z.string().max(200).default(''),
+    agreeToTerms: z.boolean().refine((v) => v === true, {
+      message: 'Please agree to the terms to continue',
+    }),
+  });
+}
 
-export type BookingFormValues = z.infer<typeof bookingSchema>;
+export type BookingFormValues = {
+  fullName: string;
+  phone: string;
+  email: string;
+  address: string;
+  propertyType: z.infer<typeof propertyTypeEnum>;
+  roofAreaSqFt: number;
+  preferredDate: Date;
+  timeSlot: z.infer<typeof timeSlotEnum>;
+  notes: string;
+  relationshipNote: string;
+  agreeToTerms: boolean;
+};
 
 const STEP_FIELDS: Record<number, (keyof BookingFormValues)[]> = {
-  1: ['fullName', 'phone', 'email'],
+  1: ['fullName', 'phone', 'email', 'relationshipNote'],
   2: ['address', 'propertyType', 'roofAreaSqFt'],
   3: ['preferredDate', 'timeSlot', 'notes'],
   4: ['agreeToTerms'],
@@ -141,7 +159,11 @@ const PROPERTY_TYPE_MAP: Record<string, string> = {
   agricultural: 'Agricultural',
 };
 
-const SuccessView: React.FC<{ coinsEarned: number; onHome: () => void }> = ({ coinsEarned, onHome }) => {
+const SuccessView: React.FC<{
+  coinsEarned: number;
+  onHome: () => void;
+  referralMode: boolean;
+}> = ({ coinsEarned, onHome, referralMode }) => {
   const scale = useSharedValue(0);
   const ring = useSharedValue(0);
 
@@ -174,7 +196,11 @@ const SuccessView: React.FC<{ coinsEarned: number; onHome: () => void }> = ({ co
       <View style={styles.coinsBanner}>
         <Text style={styles.coinsBannerText}>+{coinsEarned} coins earned</Text>
       </View>
-      <Text style={styles.successBody}>Our team will call you within 2 hours</Text>
+      <Text style={styles.successBody}>
+        {referralMode
+          ? "We'll contact them about the visit. Track progress under My Site Visits."
+          : 'Our team will call you within 2 hours'}
+      </Text>
       <TouchableOpacity style={styles.homeBtn} onPress={onHome} activeOpacity={0.85}>
         <Text style={styles.homeBtnText}>Back to Home</Text>
       </TouchableOpacity>
@@ -189,10 +215,14 @@ function buildDefaultPhone(p: string | null): string {
   return last10.length === 10 ? `+91${last10}` : p;
 }
 
-function buildDefaultValues(phone: string | null, name?: string): BookingFormValues {
+function buildDefaultValues(
+  mode: 'self' | 'referral',
+  phone: string | null,
+  name?: string
+): BookingFormValues {
   return {
-    fullName: name || '',
-    phone: buildDefaultPhone(phone),
+    fullName: mode === 'self' ? name || '' : '',
+    phone: mode === 'self' ? buildDefaultPhone(phone) : '',
     email: '',
     address: '',
     propertyType: 'residential',
@@ -200,6 +230,7 @@ function buildDefaultValues(phone: string | null, name?: string): BookingFormVal
     preferredDate: startOfTomorrow(),
     timeSlot: 'morning',
     notes: '',
+    relationshipNote: '',
     agreeToTerms: false,
   };
 }
@@ -207,6 +238,10 @@ function buildDefaultValues(phone: string | null, name?: string): BookingFormVal
 const BookSiteVisitScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const route = useRoute<RouteProp<MainStackParamList, 'BookSiteVisit'>>();
+  const leadMode: 'self' | 'referral' = route.params?.mode === 'referral' ? 'referral' : 'self';
+  const referralMode = leadMode === 'referral';
+
   const { phoneNumber, userData, updateCoins } = useAuthStore();
 
   const [step, setStep] = useState(1);
@@ -216,9 +251,11 @@ const BookSiteVisitScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coinsEarned, setCoinsEarned] = useState(100);
 
+  const bookingSchema = useMemo(() => buildBookingSchema(leadMode), [leadMode]);
+
   const defaultValues = useMemo(
-    () => buildDefaultValues(phoneNumber, userData?.name),
-    [phoneNumber, userData?.name]
+    () => buildDefaultValues(leadMode, phoneNumber, userData?.name),
+    [leadMode, phoneNumber, userData?.name]
   );
 
   const {
@@ -230,27 +267,32 @@ const BookSiteVisitScreen: React.FC = () => {
     trigger,
     formState: { errors },
   } = useForm<BookingFormValues>({
-    resolver: zodResolver(bookingSchema),
+    resolver: zodResolver(bookingSchema) as Resolver<BookingFormValues>,
     mode: 'onChange',
     defaultValues,
   });
 
   useEffect(() => {
-    setValue('phone', buildDefaultPhone(phoneNumber), { shouldValidate: true });
-    if (userData?.name && !watch('fullName')) {
-      setValue('fullName', userData.name, { shouldValidate: true });
+    if (leadMode === 'self') {
+      setValue('phone', buildDefaultPhone(phoneNumber), { shouldValidate: true });
+      if (userData?.name && !watch('fullName')) {
+        setValue('fullName', userData.name, { shouldValidate: true });
+      }
     }
-  }, [phoneNumber, userData?.name, setValue]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leadMode, phoneNumber, userData?.name, setValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const watched = watch();
   const canStep1 = useMemo(() => {
-    const r = bookingSchema.pick({ fullName: true, phone: true, email: true }).safeParse({
-      fullName: watched.fullName,
-      phone: watched.phone,
-      email: watched.email,
-    });
+    const r = bookingSchema
+      .pick({ fullName: true, phone: true, email: true, relationshipNote: true })
+      .safeParse({
+        fullName: watched.fullName,
+        phone: watched.phone,
+        email: watched.email,
+        relationshipNote: watched.relationshipNote ?? '',
+      });
     return r.success;
-  }, [watched.fullName, watched.phone, watched.email]);
+  }, [bookingSchema, watched.fullName, watched.phone, watched.email, watched.relationshipNote]);
 
   const canStep2 = useMemo(() => {
     const r = bookingSchema
@@ -261,7 +303,7 @@ const BookSiteVisitScreen: React.FC = () => {
         roofAreaSqFt: watched.roofAreaSqFt,
       });
     return r.success;
-  }, [watched.address, watched.propertyType, watched.roofAreaSqFt]);
+  }, [bookingSchema, watched.address, watched.propertyType, watched.roofAreaSqFt]);
 
   const canStep3 = useMemo(() => {
     const r = bookingSchema
@@ -272,7 +314,7 @@ const BookSiteVisitScreen: React.FC = () => {
         notes: watched.notes,
       });
     return r.success;
-  }, [watched.preferredDate, watched.timeSlot, watched.notes]);
+  }, [bookingSchema, watched.preferredDate, watched.timeSlot, watched.notes]);
 
   const canStep4 = watched.agreeToTerms === true;
 
@@ -313,6 +355,8 @@ const BookSiteVisitScreen: React.FC = () => {
           preferredDate: data.preferredDate.toISOString(),
           timeSlot: data.timeSlot,
           notes: data.notes || undefined,
+          leadType: leadMode,
+          relationshipNote: data.relationshipNote?.trim() || undefined,
         };
 
         const response = await leadService.createLead(payload);
@@ -331,7 +375,7 @@ const BookSiteVisitScreen: React.FC = () => {
         setIsSubmitting(false);
       }
     },
-    [updateCoins]
+    [updateCoins, leadMode]
   );
 
   const onInvalidSubmit = useCallback(async () => {
@@ -347,9 +391,9 @@ const BookSiteVisitScreen: React.FC = () => {
     setShowSuccess(false);
     setStep(1);
     setStepKey((k) => k + 1);
-    reset(buildDefaultValues(phoneNumber, userData?.name));
-    navigation.navigate('MainTabs', { screen: 'Home' });
-  }, [navigation, phoneNumber, userData?.name, reset]);
+    reset(buildDefaultValues(leadMode, phoneNumber, userData?.name));
+    navigation.navigate('MainTabs', { screen: referralMode ? 'Refer' : 'Home' });
+  }, [navigation, phoneNumber, userData?.name, reset, leadMode, referralMode]);
 
   const onDateChange = useCallback(
     (_: unknown, date?: Date) => {
@@ -363,7 +407,11 @@ const BookSiteVisitScreen: React.FC = () => {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <StatusBar style="dark" />
-        <SuccessView coinsEarned={coinsEarned} onHome={goHome} />
+        <SuccessView
+          coinsEarned={coinsEarned}
+          onHome={goHome}
+          referralMode={referralMode}
+        />
       </View>
     );
   }
@@ -389,7 +437,7 @@ const BookSiteVisitScreen: React.FC = () => {
               </TouchableOpacity>
             )}
             <Text style={styles.progressText}>
-              Step {step} of {TOTAL_STEPS}
+              {referralMode ? 'Referral visit' : 'Your visit'} · Step {step} of {TOTAL_STEPS}
             </Text>
             <View style={styles.headerSpacer} />
           </View>
@@ -407,17 +455,23 @@ const BookSiteVisitScreen: React.FC = () => {
           <Animated.View entering={FadeInRight.duration(280)}>
             {step === 1 && (
               <>
-                <Text style={styles.stepTitle}>Personal details</Text>
-                <Text style={styles.stepHint}>We'll use this to contact you about the visit.</Text>
+                <Text style={styles.stepTitle}>
+                  {referralMode ? 'Referred person' : 'Personal details'}
+                </Text>
+                <Text style={styles.stepHint}>
+                  {referralMode
+                    ? "Enter their details — the visit is booked under your referral."
+                    : "We'll use this to contact you about the visit."}
+                </Text>
 
-                <Text style={styles.label}>Full name *</Text>
+                <Text style={styles.label}>{referralMode ? 'Their full name *' : 'Full name *'}</Text>
                 <Controller
                   control={control}
                   name="fullName"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <TextInput
                       style={[styles.input, errors.fullName && styles.inputError]}
-                      placeholder="Enter your full name"
+                      placeholder={referralMode ? 'Referred person’s name' : 'Enter your full name'}
                       placeholderTextColor={COLORS.gray[400]}
                       value={value}
                       onBlur={onBlur}
@@ -428,20 +482,57 @@ const BookSiteVisitScreen: React.FC = () => {
                 />
                 {errors.fullName && <Text style={styles.errorText}>{errors.fullName.message}</Text>}
 
-                <Text style={styles.label}>Phone number</Text>
+                <Text style={styles.label}>{referralMode ? 'Their mobile number *' : 'Phone number'}</Text>
                 <Controller
                   control={control}
                   name="phone"
-                  render={({ field: { value } }) => (
+                  render={({ field: { onChange, onBlur, value } }) => (
                     <TextInput
-                      style={[styles.input, styles.inputDisabled]}
+                      style={[
+                        styles.input,
+                        !referralMode && styles.inputDisabled,
+                        referralMode && errors.phone && styles.inputError,
+                      ]}
+                      placeholder={referralMode ? '10-digit mobile number' : undefined}
+                      placeholderTextColor={COLORS.gray[400]}
                       value={value}
-                      editable={false}
-                      selectTextOnFocus={false}
+                      onBlur={onBlur}
+                      onChangeText={referralMode ? onChange : undefined}
+                      editable={referralMode}
+                      selectTextOnFocus={referralMode}
+                      keyboardType="phone-pad"
+                      maxLength={referralMode ? 13 : undefined}
                     />
                   )}
                 />
-                <Text style={styles.helper}>Linked to your GreenPad account</Text>
+                <Text style={styles.helper}>
+                  {referralMode
+                    ? 'Must be different from your own number'
+                    : 'Linked to your GreenPad account'}
+                </Text>
+                {errors.phone && referralMode ? (
+                  <Text style={styles.errorText}>{errors.phone.message}</Text>
+                ) : null}
+
+                {referralMode && (
+                  <>
+                    <Text style={styles.label}>Your relationship (optional)</Text>
+                    <Controller
+                      control={control}
+                      name="relationshipNote"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <TextInput
+                          style={styles.input}
+                          placeholder="e.g. Cousin, colleague, neighbour"
+                          placeholderTextColor={COLORS.gray[400]}
+                          value={value}
+                          onBlur={onBlur}
+                          onChangeText={onChange}
+                        />
+                      )}
+                    />
+                  </>
+                )}
 
                 <Text style={styles.label}>Email (optional)</Text>
                 <Controller
@@ -467,7 +558,11 @@ const BookSiteVisitScreen: React.FC = () => {
             {step === 2 && (
               <>
                 <Text style={styles.stepTitle}>Property details</Text>
-                <Text style={styles.stepHint}>Help us prepare for your site survey.</Text>
+                <Text style={styles.stepHint}>
+                  {referralMode
+                    ? 'Property where the survey will happen.'
+                    : 'Help us prepare for your site survey.'}
+                </Text>
 
                 <Text style={styles.label}>Address *</Text>
                 <Controller
@@ -636,8 +731,14 @@ const BookSiteVisitScreen: React.FC = () => {
                 <Text style={styles.stepHint}>Review your details before submitting.</Text>
 
                 <View style={styles.summaryCard}>
+                  {referralMode && (
+                    <SummaryRow label="Booking type" value="Referral (someone you referred)" />
+                  )}
                   <SummaryRow label="Name" value={watched.fullName} />
                   <SummaryRow label="Phone" value={watched.phone} />
+                  {referralMode && watched.relationshipNote ? (
+                    <SummaryRow label="Relationship" value={watched.relationshipNote} />
+                  ) : null}
                   <SummaryRow label="Email" value={watched.email || '—'} />
                   <SummaryRow label="Address" value={watched.address} />
                   <SummaryRow

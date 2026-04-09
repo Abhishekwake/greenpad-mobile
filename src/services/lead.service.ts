@@ -1,7 +1,11 @@
 import api from './api';
 
+export type LeadType = 'self' | 'referral';
+
 export interface Lead {
   _id: string;
+  leadType?: LeadType;
+  relationshipNote?: string;
   name: string;
   phone: string;
   address: string;
@@ -23,6 +27,8 @@ interface CreateLeadPayload {
   preferredDate: string;
   timeSlot: string;
   notes?: string;
+  leadType: LeadType;
+  relationshipNote?: string;
 }
 
 interface CreateLeadResponse {

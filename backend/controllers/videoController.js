@@ -11,42 +11,54 @@ const VIDEO_METADATA = {
   'CompleteInstallationVideo_nwgnj9': {
     title: 'Complete Installation Guide',
     duration: '3:15',
-    location: 'Pune, Maharashtra',
+    location: 'Wardha, Maharashtra',
     type: 'horizontal',
     description: 'Full walkthrough of a 5kW residential installation',
   },
   'Residenttial_tfzpo6': {
     title: 'Residential Solar Setup',
     duration: '2:30',
-    location: 'Mumbai, Maharashtra',
+    location: 'Wardha, Maharashtra',
     type: 'vertical',
     description: 'Modern home with rooftop solar panels',
   },
   'InstalltationMontage_ezjsui': {
-    title: 'Installation Montage',
+    title: 'Behind The Scenes: Solar Installation',
     duration: '1:45',
-    location: 'Nashik, Maharashtra',
+    location: 'Wardha, Maharashtra',
     type: 'vertical',
-    description: 'Quick highlights of our installation process',
+    description: 'Expert team installing premium solar panels',
   },
   'CommercialOxygenPark_npbjep': {
-    title: 'Commercial: Oxygen Park',
+    title: 'Commercial Project: Oxygen Park',
     duration: '4:00',
-    location: 'Nagpur, Maharashtra',
+    location: 'Wardha, Maharashtra',
     type: 'horizontal',
-    description: 'Large-scale commercial installation at Oxygen Park',
+    aspectRatio: 'fit',
+    description: 'Large-scale 50kW commercial installation',
   },
 };
 
 exports.getVideos = async (req, res, next) => {
   try {
     const videos = VIDEO_PUBLIC_IDS.map((publicId) => {
+      const metadata = VIDEO_METADATA[publicId] || {
+        title: publicId,
+        duration: '0:00',
+        location: 'Wardha, Maharashtra',
+        type: 'horizontal',
+        description: '',
+      };
+
+      // Use 'limit' for horizontal videos to fit without cropping
+      const cropMode = metadata.aspectRatio === 'fit' ? 'limit' : 'scale';
+      
       const url = cloudinary.url(publicId, {
         resource_type: 'video',
         quality: 'auto',
         fetch_format: 'auto',
         width: 720,
-        crop: 'scale',
+        crop: cropMode,
       });
 
       const thumbnail = cloudinary.url(publicId, {
@@ -58,14 +70,6 @@ exports.getVideos = async (req, res, next) => {
         gravity: 'auto',
         start_offset: '2',
       });
-
-      const metadata = VIDEO_METADATA[publicId] || {
-        title: publicId,
-        duration: '0:00',
-        location: 'India',
-        type: 'horizontal',
-        description: '',
-      };
 
       return {
         id: publicId,

@@ -154,3 +154,54 @@ exports.applyReferral = async (req, res, next) => {
     next(error);
   }
 };
+
+// POST /api/auth/admin-login
+exports.adminLogin = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@greenpad.com').toLowerCase().trim();
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password required' });
+    }
+
+    if (email.toLowerCase().trim() !== adminEmail || password !== adminPassword) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    let admin = await User.findOne({ role: 'admin' });
+    const seedPhone = process.env.ADMIN_SEED_PHONE || '9000000001';
+
+    if (!admin) {
+      const existingPhone = await User.findOne({ phone: seedPhone });
+      if (existingPhone) {
+        existingPhone.role = 'admin';
+        existingPhone.email = adminEmail;
+        existingPhone.name = existingPhone.name || 'Admin';
+        await existingPhone.save();
+        admin = existingPhone;
+      } else {
+        admin = await User.create({
+          name: 'Admin',
+          phone: seedPhone,
+          email: adminEmail,
+          role: 'admin',
+        });
+      }
+    }
+
+    const token = signToken(admin._id);
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        name: admin.name,
+        email: admin.email || adminEmail,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

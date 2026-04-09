@@ -15,7 +15,7 @@ export type MainTabParamList = {
 
 export type MainStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
-  BookSiteVisit: undefined;
+  BookSiteVisit: { mode?: 'self' | 'referral' } | undefined;
   RewardsStore: undefined;
   Notifications: undefined;
   MyLeads: undefined;
