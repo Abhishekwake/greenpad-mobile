@@ -7,7 +7,7 @@ import * as Device from 'expo-device';
 
 /**
  * If nothing else matches, this host is used for physical devices (e.g. LAN IP of your PC).
- * Prefer: app.json → expo.extra.apiBaseUrl, or env EXPO_PUBLIC_API_URL.
+ * Prefer: EXPO_PUBLIC_API_URL (.env / EAS), then app.json → expo.extra.apiBaseUrl, then dev fallbacks.
  */
 const FALLBACK_LAN_HOST = '192.168.1.104';
 
@@ -45,14 +45,15 @@ function isPrivateIpv4(host: string): boolean {
 }
 
 function resolveApiBaseUrl(): string {
-  const extraUrl = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
-  if (extraUrl && String(extraUrl).trim().length > 0) {
-    return normalizeApiBase(String(extraUrl));
-  }
-
+  // Prefer env (EAS secrets / local .env) so you can override app.json `extra.apiBaseUrl` for local API.
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   if (envUrl && envUrl.trim().length > 0) {
     return normalizeApiBase(envUrl);
+  }
+
+  const extraUrl = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
+  if (extraUrl && String(extraUrl).trim().length > 0) {
+    return normalizeApiBase(String(extraUrl));
   }
 
   if (Platform.OS === 'web') {

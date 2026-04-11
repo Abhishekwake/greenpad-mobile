@@ -11,5 +11,8 @@
     "admin:build": "npm run build --prefix greenpad-admin",
     "api": "npm run dev --prefix backend",
     "api:start": "npm start --prefix backend"
+  },
+  "dependencies": {
+    "greenpad-admin": "file:greenpad-admin"
   }
 }

@@ -32,7 +32,10 @@
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
       "package": "com.greenpad.app",
-      "permissions": ["NOTIFICATIONS", "VIBRATE"]
+      "permissions": [
+        "NOTIFICATIONS",
+        "VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -49,9 +52,11 @@
       ]
     ],
     "extra": {
+      "apiBaseUrl": "https://greenpad-mobile.onrender.com/api",
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "f541b523-3832-4ba2-a98c-e1dad2e14f4e"
       }
-    }
+    },
+    "owner": "abhishekwake"
   }
 }
