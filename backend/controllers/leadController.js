@@ -1,6 +1,7 @@
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
+const { getCoinSettings } = require('../utils/getCoinSettings');
 
 // POST /api/lead/create
 exports.createLead = async (req, res, next) => {
@@ -33,7 +34,8 @@ exports.createLead = async (req, res, next) => {
       });
     }
 
-    const coinsForBooking = type === 'referral' ? 25 : 100;
+    const coinCfg = await getCoinSettings();
+    const coinsForBooking = type === 'referral' ? coinCfg.coinsReferralBook : coinCfg.coinsSelfBook;
     const description =
       type === 'referral' ? 'Referral site visit booked' : 'Site visit booked';
 
@@ -81,19 +83,15 @@ exports.createLead = async (req, res, next) => {
   }
 };
 
-// GET /api/lead/my-leads — hide not_converted from users; map legacy rejected → cancelled
+// GET /api/lead/my-leads — show all; legacy DB values normalized to current enum
 exports.getMyLeads = async (req, res, next) => {
   try {
-    const leads = await Lead.find({
-      userId: req.user._id,
-      status: { $nin: ['not_converted'] },
-    })
-      .sort({ createdAt: -1 })
-      .lean();
+    const leads = await Lead.find({ userId: req.user._id }).sort({ createdAt: -1 }).lean();
 
+    const legacyToLost = new Set(['not_converted', 'cancelled', 'rejected']);
     const sanitized = leads.map((l) => ({
       ...l,
-      status: l.status === 'rejected' ? 'cancelled' : l.status,
+      status: legacyToLost.has(l.status) ? 'lost' : l.status,
     }));
 
     res.json({ success: true, data: sanitized });
@@ -150,7 +148,7 @@ exports.cancelLead = async (req, res, next) => {
       });
     }
 
-    lead.status = 'cancelled';
+    lead.status = 'lost';
     await lead.save();
 
     res.json({ success: true, message: 'Visit cancelled', data: lead });

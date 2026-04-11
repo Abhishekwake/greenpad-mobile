@@ -96,6 +96,7 @@ exports.redeemCoins = async (req, res, next) => {
       amount: -reward.coinsRequired,
       description: `Redeemed: ${reward.title}`,
       relatedTo: { model: 'Reward', id: reward._id },
+      status: 'pending',
     });
 
     res.json({

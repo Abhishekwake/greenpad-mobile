@@ -1,17 +1,22 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment
+
+All HTTP calls go through **`src/lib/api.ts`** (Axios instance with `baseURL` = **`process.env.NEXT_PUBLIC_API_URL`** only — no other hardcoded API URLs in the app).
+
+| Mode | Where the URL comes from |
+|------|---------------------------|
+| `next dev` | **`.env.development`** (committed default) + optional **`.env.local`** overrides |
+| `next build` / `next start` | **`.env.production`**, `.env.production.local`, or CI/host env |
+
+See [Next.js env docs](https://nextjs.org/docs/app/building-your-application/configuring/environment-variables). Templates: `.env.example`, `.env.production.example`.
+
 ## Getting Started
 
-First, run the development server:
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.

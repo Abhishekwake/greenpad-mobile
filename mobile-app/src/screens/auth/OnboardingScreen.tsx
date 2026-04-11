@@ -13,7 +13,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   interpolate,
   Extrapolation,
   useAnimatedScrollHandler,
@@ -21,18 +20,22 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { COLORS } from '../../constants';
+import GvLogo from '../../components/GvLogo';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const ONBOARDING_KEY = 'greenpad_onboarding_done';
 
 interface Slide {
   id: string;
-  emoji: string;
+  /** When set, show emoji like original slides; when omitted, show GV logo. */
+  emoji?: string;
+  highlight: string;
   bg: string;
   title: string;
   subtitle: string;
-  highlight: string;
+  /** Logo width when `emoji` is omitted */
+  logoWidth?: number;
 }
 
 const SLIDES: Slide[] = [
@@ -59,6 +62,14 @@ const SLIDES: Slide[] = [
     title: 'Your Trusted\nLocal Partner',
     subtitle: 'Authorized Waaree dealer with 500+ happy installations. Quality guaranteed.',
     highlight: '#A78BFA',
+  },
+  {
+    id: '4',
+    bg: '#0f766e',
+    title: 'GreenPad\nVentures',
+    subtitle: 'Your one place for referrals, GreenCoins, and going solar with confidence.',
+    highlight: '#5EEAD4',
+    logoWidth: 118,
   },
 ];
 
@@ -95,7 +106,13 @@ const SlideItem: React.FC<SlideItemProps> = ({ item, index, scrollX }) => {
       <Animated.View style={[styles.slideContent, animatedStyle]}>
         <View style={styles.illustrationWrap}>
           <View style={[styles.illustrationRing, { borderColor: item.highlight }]} />
-          <Text style={styles.illustrationEmoji}>{item.emoji}</Text>
+          {item.emoji != null ? (
+            <Text style={styles.illustrationEmoji}>{item.emoji}</Text>
+          ) : (
+            <View style={styles.logoInRing}>
+              <GvLogo width={item.logoWidth ?? 120} />
+            </View>
+          )}
         </View>
         <Text style={styles.slideTitle}>{item.title}</Text>
         <Text style={styles.slideSubtitle}>{item.subtitle}</Text>
@@ -206,9 +223,7 @@ const OnboardingScreen: React.FC<Props> = ({ onDone }) => {
             onPress={handleNext}
             activeOpacity={0.85}
           >
-            <Text style={styles.nextText}>
-              {isLast ? 'Get Started' : 'Next'}
-            </Text>
+            <Text style={styles.nextText}>{isLast ? 'Get Started' : 'Next'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -239,6 +254,10 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   illustrationEmoji: { fontSize: 80 },
+  logoInRing: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   slideTitle: {
     fontSize: 36,
     fontWeight: '800',

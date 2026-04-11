@@ -10,6 +10,7 @@ import {
   Platform,
   Linking,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -266,6 +267,11 @@ const ReferScreen: React.FC = () => {
     }
   }, []);
 
+  const goBackToHub = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActivePath('hub');
+  }, []);
+
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
@@ -274,6 +280,20 @@ const ReferScreen: React.FC = () => {
     useCallback(() => {
       if (!isLoading) fetchStats();
     }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /** Android hardware back: return to two-option hub instead of leaving Refer / jumping to Home tab. */
+  useFocusEffect(
+    useCallback(() => {
+      if (activePath === 'hub') {
+        return undefined;
+      }
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        void goBackToHub();
+        return true;
+      });
+      return () => sub.remove();
+    }, [activePath, goBackToHub])
   );
 
   const handleCopyCode = useCallback(async () => {
@@ -326,11 +346,6 @@ const ReferScreen: React.FC = () => {
     const parent = navigation.getParent() as NativeStackNavigationProp<MainStackParamList> | undefined;
     parent?.navigate('MyLeads');
   }, [navigation]);
-
-  const goBackToHub = useCallback(async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setActivePath('hub');
-  }, []);
 
   if (isLoading) {
     return (

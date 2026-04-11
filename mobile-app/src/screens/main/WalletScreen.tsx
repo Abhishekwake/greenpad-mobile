@@ -125,7 +125,49 @@ interface TransactionItemProps {
 
 const TransactionItem: React.FC<TransactionItemProps> = memo(({ item, index }) => {
   const isEarn = item.type === 'earn';
-  const isPending = item.status === 'pending';
+  const isRedeem = item.type === 'redeem';
+  const st = item.status;
+
+  const isRedeemPending = isRedeem && st === 'pending';
+  const isRedeemDone = isRedeem && st === 'completed';
+  const isRedeemCancelled = isRedeem && (st === 'cancelled' || st === 'failed');
+  const isEarnPending = isEarn && st === 'pending';
+
+  let iconName: React.ComponentProps<typeof Ionicons>['name'] = isEarn
+    ? 'checkmark-circle'
+    : 'close-circle';
+  let iconColor = isEarn ? COLORS.primary : '#EF4444';
+  let iconBg = isEarn ? '#ECFDF5' : '#FEF2F2';
+
+  if (isRedeem) {
+    if (isRedeemPending) {
+      iconName = 'hourglass-outline';
+      iconColor = '#D97706';
+      iconBg = '#FFFBEB';
+    } else if (isRedeemCancelled) {
+      iconName = 'ban-outline';
+      iconColor = COLORS.gray[500];
+      iconBg = COLORS.gray[100];
+    } else if (isRedeemDone) {
+      iconName = 'gift-outline';
+      iconColor = COLORS.primary;
+      iconBg = '#ECFDF5';
+    }
+  }
+
+  let statusLabel = 'Completed';
+  if (isRedeemPending || isEarnPending) {
+    statusLabel = isRedeem ? 'Pending install' : 'Pending';
+  } else if (isRedeemCancelled) {
+    statusLabel = st === 'failed' ? 'Failed' : 'Refunded';
+  } else if (isRedeemDone) {
+    statusLabel = 'Installed';
+  } else if (st === 'pending') {
+    statusLabel = 'Pending';
+  }
+
+  const badgePending = isRedeemPending || isEarnPending;
+  const badgeNeutral = isRedeemCancelled;
 
   return (
     <Animated.View
@@ -134,17 +176,8 @@ const TransactionItem: React.FC<TransactionItemProps> = memo(({ item, index }) =
       style={styles.transactionItem}
     >
       <View style={styles.transactionContent}>
-        <View
-          style={[
-            styles.transactionIcon,
-            { backgroundColor: isEarn ? '#ECFDF5' : '#FEF2F2' },
-          ]}
-        >
-          <Ionicons
-            name={isEarn ? 'checkmark-circle' : 'close-circle'}
-            size={24}
-            color={isEarn ? COLORS.primary : '#EF4444'}
-          />
+        <View style={[styles.transactionIcon, { backgroundColor: iconBg }]}>
+          <Ionicons name={iconName} size={24} color={iconColor} />
         </View>
 
         <View style={styles.transactionDetails}>
@@ -159,15 +192,29 @@ const TransactionItem: React.FC<TransactionItemProps> = memo(({ item, index }) =
           <Text
             style={[
               styles.transactionAmount,
-              { color: isEarn ? COLORS.primary : '#EF4444' },
+              { color: item.amount >= 0 ? COLORS.primary : '#EF4444' },
             ]}
           >
             {item.amount > 0 ? '+' : ''}{item.amount.toLocaleString()}
           </Text>
 
-          <View style={[styles.statusBadge, isPending ? styles.statusPending : styles.statusCompleted]}>
-            <Text style={[styles.statusText, isPending ? styles.statusTextPending : styles.statusTextCompleted]}>
-              {isPending ? 'Pending' : 'Completed'}
+          <View
+            style={[
+              styles.statusBadge,
+              badgePending ? styles.statusPending : badgeNeutral ? styles.statusNeutral : styles.statusCompleted,
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                badgePending
+                  ? styles.statusTextPending
+                  : badgeNeutral
+                    ? styles.statusTextNeutral
+                    : styles.statusTextCompleted,
+              ]}
+            >
+              {statusLabel}
             </Text>
           </View>
         </View>
@@ -487,9 +534,11 @@ const styles = StyleSheet.create({
   },
   statusCompleted: { backgroundColor: '#ECFDF5' },
   statusPending: { backgroundColor: '#FEF3C7' },
+  statusNeutral: { backgroundColor: COLORS.gray[100] as string },
   statusText: { fontSize: 11, fontWeight: '600' },
   statusTextCompleted: { color: COLORS.primary },
   statusTextPending: { color: '#D97706' },
+  statusTextNeutral: { color: COLORS.gray[600] as string },
 
   emptyState: {
     alignItems: 'center',

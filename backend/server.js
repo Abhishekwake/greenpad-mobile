@@ -1,4 +1,6 @@
-require('dotenv').config();
+const { loadEnv } = require('./config/loadEnv');
+loadEnv();
+
 const os = require('os');
 const express = require('express');
 
@@ -15,23 +17,21 @@ function getLanIPv4() {
   return null;
 }
 const cors = require('cors');
+const { buildCorsOptions } = require('./config/corsOptions');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorHandler');
 const seedRewards = require('./utils/seedRewards');
+const seedCoinSettings = require('./utils/seedCoinSettings');
+const migrateLeadStatuses = require('./utils/migrateLeadStatuses');
 
 const app = express();
 
 // Security
 app.use(helmet());
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || '*',
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  })
-);
+app.use(cors(buildCorsOptions()));
 
 // Rate limiting (relaxed in development)
 const isDev = process.env.NODE_ENV === 'development';
@@ -57,9 +57,20 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Health check
+// Health checks (root for load balancers; /api for existing clients)
+function healthPayload() {
+  return {
+    status: 'ok',
+    service: 'greenpad-api',
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development',
+  };
+}
+app.get('/health', (_req, res) => {
+  res.json(healthPayload());
+});
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json(healthPayload());
 });
 
 // Routes
@@ -85,13 +96,15 @@ const PORT = process.env.PORT || 5000;
 
 const start = async () => {
   await connectDB();
+  await migrateLeadStatuses();
   await seedRewards();
+  await seedCoinSettings();
   app.listen(PORT, '0.0.0.0', () => {
     const lan = getLanIPv4();
     console.log(`Server running in ${process.env.NODE_ENV} on port ${PORT}`);
-    console.log(`Health: http://localhost:${PORT}/api/health`);
+    console.log(`Health: http://localhost:${PORT}/health  (and /api/health)`);
     if (lan) {
-      console.log(`Network (phones): http://${lan}:${PORT}/api/health`);
+      console.log(`Network (phones): http://${lan}:${PORT}/health`);
     }
   });
 };

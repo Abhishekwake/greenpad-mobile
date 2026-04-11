@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Keyboard,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useForm, Controller, type Resolver } from 'react-hook-form';
@@ -235,6 +237,61 @@ function buildDefaultValues(
   };
 }
 
+/** Keeps the active text field above the keyboard on every step (self + referral). */
+function useScrollFieldIntoView(scrollRef: React.RefObject<ScrollView | null>) {
+  const fieldY = useRef<Record<string, number>>({});
+  const focusedField = useRef<string | null>(null);
+
+  const registerFieldLayout = useCallback((key: string) => (e: LayoutChangeEvent) => {
+    fieldY.current[key] = e.nativeEvent.layout.y;
+  }, []);
+
+  const scrollField = useCallback(
+    (key: string) => {
+      const y = fieldY.current[key] ?? 0;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y - 72), animated: true });
+      });
+    },
+    [scrollRef]
+  );
+
+  const bindTextInputScroll = useCallback(
+    (key: string, handlers: { onChangeText: (text: string) => void; onBlur: () => void }) => ({
+      onFocus: () => {
+        focusedField.current = key;
+        scrollField(key);
+        setTimeout(() => scrollField(key), Platform.OS === 'android' ? 260 : 140);
+      },
+      onBlur: () => {
+        focusedField.current = null;
+        handlers.onBlur();
+      },
+      onChangeText: (text: string) => {
+        handlers.onChangeText(text);
+        scrollField(key);
+      },
+    }),
+    [scrollField]
+  );
+
+  useEffect(() => {
+    const ev = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(ev, () => {
+      const k = focusedField.current;
+      if (k) {
+        scrollField(k);
+        setTimeout(() => {
+          if (focusedField.current) scrollField(focusedField.current);
+        }, Platform.OS === 'android' ? 160 : 100);
+      }
+    });
+    return () => sub.remove();
+  }, [scrollField]);
+
+  return { registerFieldLayout, bindTextInputScroll, scrollField };
+}
+
 const BookSiteVisitScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
@@ -250,6 +307,9 @@ const BookSiteVisitScreen: React.FC = () => {
   const [stepKey, setStepKey] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coinsEarned, setCoinsEarned] = useState(100);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const { registerFieldLayout, bindTextInputScroll, scrollField } = useScrollFieldIntoView(scrollRef);
 
   const bookingSchema = useMemo(() => buildBookingSchema(leadMode), [leadMode]);
 
@@ -447,10 +507,12 @@ const BookSiteVisitScreen: React.FC = () => {
         </View>
 
         <ScrollView
+          ref={scrollRef}
           key={stepKey}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, step < 4 && styles.scrollPadSteps]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
         >
           <Animated.View entering={FadeInRight.duration(280)}>
             {step === 1 && (
@@ -464,47 +526,52 @@ const BookSiteVisitScreen: React.FC = () => {
                     : "We'll use this to contact you about the visit."}
                 </Text>
 
-                <Text style={styles.label}>{referralMode ? 'Their full name *' : 'Full name *'}</Text>
-                <Controller
-                  control={control}
-                  name="fullName"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <TextInput
-                      style={[styles.input, errors.fullName && styles.inputError]}
-                      placeholder={referralMode ? 'Referred person’s name' : 'Enter your full name'}
-                      placeholderTextColor={COLORS.gray[400]}
-                      value={value}
-                      onBlur={onBlur}
-                      onChangeText={onChange}
-                      autoCapitalize="words"
-                    />
-                  )}
-                />
-                {errors.fullName && <Text style={styles.errorText}>{errors.fullName.message}</Text>}
+                <View onLayout={registerFieldLayout('fullName')}>
+                  <Text style={styles.label}>{referralMode ? 'Their full name *' : 'Full name *'}</Text>
+                  <Controller
+                    control={control}
+                    name="fullName"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <TextInput
+                        style={[styles.input, errors.fullName && styles.inputError]}
+                        placeholder={referralMode ? 'Referred person’s name' : 'Enter your full name'}
+                        placeholderTextColor={COLORS.gray[400]}
+                        value={value}
+                        autoCapitalize="words"
+                        {...bindTextInputScroll('fullName', { onChangeText: onChange, onBlur })}
+                      />
+                    )}
+                  />
+                  {errors.fullName && <Text style={styles.errorText}>{errors.fullName.message}</Text>}
+                </View>
 
-                <Text style={styles.label}>{referralMode ? 'Their mobile number *' : 'Phone number'}</Text>
-                <Controller
-                  control={control}
-                  name="phone"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <TextInput
-                      style={[
-                        styles.input,
-                        !referralMode && styles.inputDisabled,
-                        referralMode && errors.phone && styles.inputError,
-                      ]}
-                      placeholder={referralMode ? '10-digit mobile number' : undefined}
-                      placeholderTextColor={COLORS.gray[400]}
-                      value={value}
-                      onBlur={onBlur}
-                      onChangeText={referralMode ? onChange : undefined}
-                      editable={referralMode}
-                      selectTextOnFocus={referralMode}
-                      keyboardType="phone-pad"
-                      maxLength={referralMode ? 13 : undefined}
-                    />
-                  )}
-                />
+                <View onLayout={registerFieldLayout('phone')}>
+                  <Text style={styles.label}>{referralMode ? 'Their mobile number *' : 'Phone number'}</Text>
+                  <Controller
+                    control={control}
+                    name="phone"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <TextInput
+                        style={[
+                          styles.input,
+                          !referralMode && styles.inputDisabled,
+                          referralMode && errors.phone && styles.inputError,
+                        ]}
+                        placeholder={referralMode ? '10-digit mobile number' : undefined}
+                        placeholderTextColor={COLORS.gray[400]}
+                        value={value}
+                        editable={referralMode}
+                        selectTextOnFocus={referralMode}
+                        keyboardType="phone-pad"
+                        maxLength={referralMode ? 13 : undefined}
+                        {...bindTextInputScroll('phone', {
+                          onChangeText: referralMode ? onChange : () => {},
+                          onBlur,
+                        })}
+                      />
+                    )}
+                  />
+                </View>
                 <Text style={styles.helper}>
                   {referralMode
                     ? 'Must be different from your own number'
@@ -515,7 +582,7 @@ const BookSiteVisitScreen: React.FC = () => {
                 ) : null}
 
                 {referralMode && (
-                  <>
+                  <View onLayout={registerFieldLayout('relationshipNote')}>
                     <Text style={styles.label}>Your relationship (optional)</Text>
                     <Controller
                       control={control}
@@ -526,32 +593,33 @@ const BookSiteVisitScreen: React.FC = () => {
                           placeholder="e.g. Cousin, colleague, neighbour"
                           placeholderTextColor={COLORS.gray[400]}
                           value={value}
-                          onBlur={onBlur}
-                          onChangeText={onChange}
+                          {...bindTextInputScroll('relationshipNote', { onChangeText: onChange, onBlur })}
                         />
                       )}
                     />
-                  </>
+                  </View>
                 )}
 
-                <Text style={styles.label}>Email (optional)</Text>
-                <Controller
-                  control={control}
-                  name="email"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <TextInput
-                      style={[styles.input, errors.email && styles.inputError]}
-                      placeholder="you@example.com"
-                      placeholderTextColor={COLORS.gray[400]}
-                      value={value}
-                      onBlur={onBlur}
-                      onChangeText={onChange}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  )}
-                />
-                {errors.email && <Text style={styles.errorText}>{errors.email.message}</Text>}
+                <View onLayout={registerFieldLayout('email')}>
+                  <Text style={styles.label}>Email (optional)</Text>
+                  <Controller
+                    control={control}
+                    name="email"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <TextInput
+                        style={[styles.input, errors.email && styles.inputError]}
+                        placeholder="you@example.com"
+                        placeholderTextColor={COLORS.gray[400]}
+                        value={value}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        {...bindTextInputScroll('email', { onChangeText: onChange, onBlur })}
+                      />
+                    )}
+                  />
+                  {errors.email && <Text style={styles.errorText}>{errors.email.message}</Text>}
+                </View>
               </>
             )}
 
@@ -564,25 +632,26 @@ const BookSiteVisitScreen: React.FC = () => {
                     : 'Help us prepare for your site survey.'}
                 </Text>
 
-                <Text style={styles.label}>Address *</Text>
-                <Controller
-                  control={control}
-                  name="address"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <TextInput
-                      style={[styles.textArea, errors.address && styles.inputError]}
-                      placeholder="House / street, area, city, PIN"
-                      placeholderTextColor={COLORS.gray[400]}
-                      value={value}
-                      onBlur={onBlur}
-                      onChangeText={onChange}
-                      multiline
-                      textAlignVertical="top"
-                      numberOfLines={4}
-                    />
-                  )}
-                />
-                {errors.address && <Text style={styles.errorText}>{errors.address.message}</Text>}
+                <View onLayout={registerFieldLayout('address')}>
+                  <Text style={styles.label}>Address *</Text>
+                  <Controller
+                    control={control}
+                    name="address"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <TextInput
+                        style={[styles.textArea, errors.address && styles.inputError]}
+                        placeholder="House / street, area, city, PIN"
+                        placeholderTextColor={COLORS.gray[400]}
+                        value={value}
+                        multiline
+                        textAlignVertical="top"
+                        numberOfLines={4}
+                        {...bindTextInputScroll('address', { onChangeText: onChange, onBlur })}
+                      />
+                    )}
+                  />
+                  {errors.address && <Text style={styles.errorText}>{errors.address.message}</Text>}
+                </View>
 
                 <Text style={styles.label}>Property type *</Text>
                 <Controller
@@ -613,27 +682,32 @@ const BookSiteVisitScreen: React.FC = () => {
                   )}
                 />
 
-                <Text style={styles.label}>Roof area (sq ft) *</Text>
-                <Text style={styles.sliderValue}>
-                  {Math.round(watched.roofAreaSqFt).toLocaleString()} sq ft
-                </Text>
-                <Controller
-                  control={control}
-                  name="roofAreaSqFt"
-                  render={({ field: { value, onChange } }) => (
-                    <Slider
-                      style={styles.slider}
-                      minimumValue={100}
-                      maximumValue={5000}
-                      step={50}
-                      value={value}
-                      onValueChange={onChange}
-                      minimumTrackTintColor={COLORS.primary}
-                      maximumTrackTintColor={COLORS.gray[200]}
-                      thumbTintColor={COLORS.primary}
-                    />
-                  )}
-                />
+                <View onLayout={registerFieldLayout('roofArea')} onTouchStart={() => scrollField('roofArea')}>
+                  <Text style={styles.label}>Roof area (sq ft) *</Text>
+                  <Text style={styles.sliderValue}>
+                    {Math.round(watched.roofAreaSqFt).toLocaleString()} sq ft
+                  </Text>
+                  <Controller
+                    control={control}
+                    name="roofAreaSqFt"
+                    render={({ field: { value, onChange } }) => (
+                      <Slider
+                        style={styles.slider}
+                        minimumValue={100}
+                        maximumValue={5000}
+                        step={50}
+                        value={value}
+                        onValueChange={(v) => {
+                          onChange(v);
+                          scrollField('roofArea');
+                        }}
+                        minimumTrackTintColor={COLORS.primary}
+                        maximumTrackTintColor={COLORS.gray[200]}
+                        thumbTintColor={COLORS.primary}
+                      />
+                    )}
+                  />
+                </View>
               </>
             )}
 
@@ -642,34 +716,39 @@ const BookSiteVisitScreen: React.FC = () => {
                 <Text style={styles.stepTitle}>Schedule</Text>
                 <Text style={styles.stepHint}>Pick a convenient slot for our engineer.</Text>
 
-                <Text style={styles.label}>Preferred date *</Text>
-                <Controller
-                  control={control}
-                  name="preferredDate"
-                  render={({ field: { value } }) => (
-                    <>
-                      {Platform.OS === 'android' && (
-                        <TouchableOpacity
-                          style={styles.dateBtn}
-                          onPress={() => setShowDatePicker(true)}
-                          activeOpacity={0.85}
-                        >
-                          <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
-                          <Text style={styles.dateBtnText}>{formatDisplayDate(value)}</Text>
-                        </TouchableOpacity>
-                      )}
-                      {(Platform.OS === 'ios' || showDatePicker) && (
-                        <DateTimePicker
-                          value={value}
-                          mode="date"
-                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                          minimumDate={minSelectableDate()}
-                          onChange={onDateChange}
-                        />
-                      )}
-                    </>
-                  )}
-                />
+                <View onLayout={registerFieldLayout('preferredDate')}>
+                  <Text style={styles.label}>Preferred date *</Text>
+                  <Controller
+                    control={control}
+                    name="preferredDate"
+                    render={({ field: { value } }) => (
+                      <>
+                        {Platform.OS === 'android' && (
+                          <TouchableOpacity
+                            style={styles.dateBtn}
+                            onPress={() => {
+                              scrollField('preferredDate');
+                              setShowDatePicker(true);
+                            }}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+                            <Text style={styles.dateBtnText}>{formatDisplayDate(value)}</Text>
+                          </TouchableOpacity>
+                        )}
+                        {(Platform.OS === 'ios' || showDatePicker) && (
+                          <DateTimePicker
+                            value={value}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            minimumDate={minSelectableDate()}
+                            onChange={onDateChange}
+                          />
+                        )}
+                      </>
+                    )}
+                  />
+                </View>
                 {errors.preferredDate && (
                   <Text style={styles.errorText}>{errors.preferredDate.message}</Text>
                 )}
@@ -704,24 +783,25 @@ const BookSiteVisitScreen: React.FC = () => {
                   )}
                 />
 
-                <Text style={[styles.label, { marginTop: 8 }]}>Additional notes (optional)</Text>
-                <Controller
-                  control={control}
-                  name="notes"
-                  render={({ field: { onChange, onBlur, value } }) => (
-                    <TextInput
-                      style={styles.textArea}
-                      placeholder="Gate code, landmarks, roof access..."
-                      placeholderTextColor={COLORS.gray[400]}
-                      value={value}
-                      onBlur={onBlur}
-                      onChangeText={onChange}
-                      multiline
-                      textAlignVertical="top"
-                      numberOfLines={3}
-                    />
-                  )}
-                />
+                <View onLayout={registerFieldLayout('notes')}>
+                  <Text style={[styles.label, { marginTop: 8 }]}>Additional notes (optional)</Text>
+                  <Controller
+                    control={control}
+                    name="notes"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <TextInput
+                        style={styles.textArea}
+                        placeholder="Gate code, landmarks, roof access..."
+                        placeholderTextColor={COLORS.gray[400]}
+                        value={value}
+                        multiline
+                        textAlignVertical="top"
+                        numberOfLines={3}
+                        {...bindTextInputScroll('notes', { onChangeText: onChange, onBlur })}
+                      />
+                    )}
+                  />
+                </View>
               </>
             )}
 
@@ -853,6 +933,8 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   scrollContent: { padding: SIZES.padding, paddingBottom: 120 },
+  /** Extra scroll range so fields on steps 1–3 stay above the keyboard. */
+  scrollPadSteps: { paddingBottom: 300 },
   stepTitle: { fontSize: 22, fontWeight: '800', color: COLORS.gray[900], marginBottom: 6 },
   stepHint: { fontSize: 14, color: COLORS.gray[500], marginBottom: 20, lineHeight: 20 },
   label: { fontSize: 14, fontWeight: '600', color: COLORS.gray[700], marginBottom: 8 },

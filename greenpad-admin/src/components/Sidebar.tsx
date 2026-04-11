@@ -7,7 +7,10 @@ import {
   Users,
   UserPlus,
   Gift,
+  Package,
   CreditCard,
+  SlidersHorizontal,
+  UsersRound,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,8 +19,11 @@ const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/users", label: "Users", icon: UserPlus },
+  { href: "/agents", label: "Team", icon: UsersRound },
   { href: "/rewards", label: "Rewards", icon: Gift },
+  { href: "/redemptions", label: "Redemptions", icon: Package },
   { href: "/transactions", label: "Transactions", icon: CreditCard },
+  { href: "/settings", label: "Coin rules", icon: SlidersHorizontal },
 ];
 
 export default function Sidebar({

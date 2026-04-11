@@ -358,7 +358,7 @@ const RewardsStoreScreen: React.FC = () => {
         Toast.show({
           type: 'success',
           text1: 'Redeemed!',
-          text2: `${selectedReward.title} — check your wallet`,
+          text2: `${selectedReward.title} — pending install. We’ll contact you to schedule.`,
         });
       } else {
         Toast.show({

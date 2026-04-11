@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Download } from "lucide-react";
+import { Download, Package } from "lucide-react";
 import api from "@/lib/api";
+import { fulfillmentBadgeClass, fulfillmentLabel } from "@/lib/redemption-labels";
 import { downloadCsv } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,6 +94,24 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
+      <Card className="border-emerald-100 bg-emerald-50/50">
+        <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-3">
+            <Package className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+            <div>
+              <p className="text-sm font-medium text-emerald-950">Reward installs &amp; deliveries</p>
+              <p className="text-sm text-emerald-900/80">
+                Use the <strong>Redemptions</strong> page to track pending installs and mark rewards fulfilled. This
+                screen is the full ledger (earn / redeem / all statuses).
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" className="shrink-0 border-emerald-300 bg-white" asChild>
+            <Link href="/redemptions">Open redemptions</Link>
+          </Button>
+        </CardContent>
+      </Card>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-semibold text-gray-900">Transaction Log</h2>
         <Button variant="outline" type="button" onClick={exportCsv}>
@@ -202,7 +222,20 @@ export default function TransactionsPage() {
                         {t.amount}
                       </TableCell>
                       <TableCell className="max-w-[220px] truncate">{t.description}</TableCell>
-                      <TableCell className="capitalize">{t.status}</TableCell>
+                      <TableCell>
+                        {t.type === "redeem" ? (
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
+                              fulfillmentBadgeClass(t.status)
+                            )}
+                          >
+                            {fulfillmentLabel(t.status)}
+                          </span>
+                        ) : (
+                          <span className="capitalize">{t.status}</span>
+                        )}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-gray-600">
                         {format(new Date(t.createdAt), "MMM d, yyyy HH:mm")}
                       </TableCell>

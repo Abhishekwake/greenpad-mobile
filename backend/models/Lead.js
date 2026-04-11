@@ -55,11 +55,16 @@ const leadSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'contacted', 'visited', 'converted', 'cancelled', 'not_converted', 'rejected'],
+      enum: ['pending', 'contacted', 'visited', 'converted', 'lost'],
       default: 'pending',
     },
     assignedTo: {
       type: String,
+      default: null,
+    },
+    assignedAgent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Agent',
       default: null,
     },
   },

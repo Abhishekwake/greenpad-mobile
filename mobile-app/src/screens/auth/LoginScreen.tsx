@@ -17,6 +17,7 @@ import { COLORS, SIZES } from '../../constants';
 import { authService } from '../../services';
 import { getErrorMessage } from '../../services/api';
 import { useAuthStore } from '../../stores';
+import GvLogo from '../../components/GvLogo';
 
 type AuthStackParamList = {
   Splash: undefined;
@@ -98,9 +99,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoIcon}>☀️</Text>
-          </View>
+          <GvLogo width={136} style={styles.logoMark} />
           <Text style={styles.title}>Welcome to GreenPad</Text>
           <Text style={styles.subtitle}>
             Enter your mobile number to get started
@@ -167,22 +166,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 48,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  logoIcon: {
-    fontSize: 40,
+  logoMark: {
+    marginBottom: 20,
   },
   title: {
     fontSize: SIZES.xxl,

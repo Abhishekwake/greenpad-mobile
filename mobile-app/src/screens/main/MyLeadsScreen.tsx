@@ -30,7 +30,7 @@ import type { MainStackParamList } from '../../navigation/types';
 const PIPELINE = ['pending', 'contacted', 'visited', 'converted'] as const;
 
 function normalizeLeadStatus(status: string): string {
-  if (status === 'rejected') return 'cancelled';
+  if (status === 'rejected' || status === 'cancelled' || status === 'not_converted') return 'lost';
   return status;
 }
 
@@ -44,7 +44,7 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; ic
     bg: '#ECFDF5',
     icon: 'checkmark-circle-outline',
   },
-  cancelled: { label: 'Cancelled', color: '#DC2626', bg: '#FEF2F2', icon: 'close-circle-outline' },
+  lost: { label: 'Lost', color: '#475569', bg: '#F1F5F9', icon: 'close-circle-outline' },
 };
 
 const PIPELINE_LABEL: Record<(typeof PIPELINE)[number], string> = {
@@ -82,13 +82,13 @@ const canModify = (status: string) => {
 
 const ProgressTracker: React.FC<{ currentStatus: string }> = memo(({ currentStatus }) => {
   const s = normalizeLeadStatus(currentStatus);
-  const isTerminalCancelled = s === 'cancelled';
+  const isTerminalLost = s === 'lost';
 
-  if (isTerminalCancelled) {
+  if (isTerminalLost) {
     return (
-      <View style={ptStyles.cancelledBanner}>
-        <Ionicons name="close-circle" size={20} color="#DC2626" />
-        <Text style={ptStyles.cancelledText}>This visit was cancelled</Text>
+      <View style={ptStyles.lostBanner}>
+        <Ionicons name="close-circle" size={20} color="#475569" />
+        <Text style={ptStyles.lostBannerText}>This lead is closed.</Text>
       </View>
     );
   }
@@ -164,16 +164,16 @@ const ptStyles = StyleSheet.create({
   label: { fontSize: 13, color: COLORS.gray[400], marginLeft: 10, marginTop: 1, fontWeight: '500' },
   labelActive: { color: COLORS.gray[700] },
   labelCurrent: { fontWeight: '700', color: COLORS.primary },
-  cancelledBanner: {
+  lostBanner: {
     marginTop: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#F1F5F9',
     padding: 12,
     borderRadius: 12,
   },
-  cancelledText: { fontSize: 14, fontWeight: '600', color: '#991B1B', flex: 1 },
+  lostBannerText: { fontSize: 14, fontWeight: '600', color: '#334155', flex: 1 },
 });
 
 interface LeadCardProps {

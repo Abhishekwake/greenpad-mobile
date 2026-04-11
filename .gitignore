@@ -1,42 +1,38 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
-node_modules/
-
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
+# Root
+.DS_Store
+*.pem
+.env
+.env*.local
 npm-debug.*
 yarn-debug.*
 yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env
-.env*.local
-
-# typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# Mobile (Expo / React Native) — mobile-app/
+mobile-app/node_modules/
+mobile-app/.expo/
+mobile-app/dist/
+mobile-app/web-build/
+mobile-app/expo-env.d.ts
+mobile-app/.metro-health-check*
+mobile-app/ios/
+mobile-app/android/
+mobile-app/*.jks
+mobile-app/*.p8
+mobile-app/*.p12
+mobile-app/*.key
+mobile-app/*.mobileprovision
+mobile-app/*.orig.*
+
+# Admin — greenpad-admin/
+greenpad-admin/node_modules/
+greenpad-admin/.next/
+greenpad-admin/out/
+
+# API — backend/
+backend/node_modules/
+backend/.env
+
+# Legacy: if anything was generated at repo root
+node_modules/
+.expo/

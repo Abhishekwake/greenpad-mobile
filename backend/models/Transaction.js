@@ -29,6 +29,11 @@ const transactionSchema = new mongoose.Schema(
       model: { type: String },
       id: { type: mongoose.Schema.Types.ObjectId },
     },
+    /** Set when admin marks a redeem transaction fulfilled */
+    fulfilledAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

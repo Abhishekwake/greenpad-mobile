@@ -1,5 +1,19 @@
+const isDev = process.env.NODE_ENV === 'development';
+
 const errorHandler = (err, req, res, _next) => {
-  console.error(err.stack);
+  if (isDev) {
+    console.error(err.stack || err);
+  } else {
+    console.error(
+      JSON.stringify({
+        message: err.message,
+        name: err.name,
+        statusCode: err.statusCode,
+        path: req.path,
+        method: req.method,
+      })
+    );
+  }
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
@@ -9,7 +23,7 @@ const errorHandler = (err, req, res, _next) => {
 
   // Mongoose duplicate key
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
+    const field = Object.keys(err.keyValue || {})[0] || 'field';
     return res.status(400).json({
       success: false,
       message: `Duplicate value for ${field}`,
@@ -29,9 +43,13 @@ const errorHandler = (err, req, res, _next) => {
     return res.status(401).json({ success: false, message: 'Token expired' });
   }
 
-  res.status(err.statusCode || 500).json({
+  const status = err.statusCode && Number.isInteger(err.statusCode) ? err.statusCode : 500;
+  const exposeMessage = isDev || status < 500;
+  const message = exposeMessage ? err.message || 'Server Error' : 'Internal server error';
+
+  res.status(status).json({
     success: false,
-    message: err.message || 'Server Error',
+    message,
   });
 };
 

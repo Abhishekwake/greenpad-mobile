@@ -48,8 +48,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-3xl">
-            ☀️
+          <div className="mx-auto mb-5 flex justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/gv-logo.svg"
+              alt="GreenPad Ventures"
+              className="h-[72px] w-auto max-w-[220px] object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">GreenPad</h1>
           <p className="mt-1 text-sm text-gray-500">Admin dashboard</p>

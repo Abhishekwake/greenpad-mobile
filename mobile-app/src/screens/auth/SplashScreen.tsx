@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, SIZES } from '../../constants';
 import { useAuthStore } from '../../stores';
+import GvLogo from '../../components/GvLogo';
 
 type AuthStackParamList = {
   Splash: undefined;
@@ -60,9 +61,7 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
           },
         ]}
       >
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoIcon}>☀️</Text>
-        </View>
+        <GvLogo width={148} style={styles.logoMark} />
         <Text style={styles.appName}>GreenPad</Text>
         <Text style={styles.tagline}>Solar Referral Rewards</Text>
       </Animated.View>
@@ -84,22 +83,8 @@ const styles = StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
   },
-  logoCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  logoIcon: {
-    fontSize: 56,
+  logoMark: {
+    marginBottom: 20,
   },
   appName: {
     fontSize: 40,

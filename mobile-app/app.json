@@ -16,10 +16,15 @@
       "bundleIdentifier": "com.greenpad.app",
       "infoPlist": {
         "NSCameraUsageDescription": "GreenPad needs camera access for profile photos.",
-        "NSPhotoLibraryUsageDescription": "GreenPad needs photo library access for profile photos."
+        "NSPhotoLibraryUsageDescription": "GreenPad needs photo library access for profile photos.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
+      "softwareKeyboardMode": "adjustResize",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#10B981"

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Download } from "lucide-react";
+import { Download, PanelRight } from "lucide-react";
 import api from "@/lib/api";
 import { downloadCsv } from "@/lib/utils";
+import { adminStatusLabel, LEAD_STATUSES } from "@/lib/lead-status";
+import type { LeadRow } from "@/types/lead";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,59 +20,16 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/crm/StatusBadge";
+import {
+  LeadDetailsDrawer,
+  type LeadCRMState,
+  type AgentOption,
+} from "@/components/crm/LeadDetailsDrawer";
 
-const STATUSES = [
-  "pending",
-  "contacted",
-  "visited",
-  "converted",
-  "not_converted",
-  "cancelled",
-  "rejected",
-] as const;
-
-function adminStatusLabel(s: string) {
-  switch (s) {
-    case "not_converted":
-      return "Not converted";
-    case "converted":
-      return "Converted";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return s.charAt(0).toUpperCase() + s.slice(1);
-  }
-}
-
-function statusBadgeClass(s: string) {
-  switch (s) {
-    case "pending":
-      return "bg-amber-100 text-amber-800";
-    case "contacted":
-      return "bg-blue-100 text-blue-800";
-    case "visited":
-      return "bg-purple-100 text-purple-800";
-    case "converted":
-      return "bg-emerald-100 text-emerald-800";
-    case "not_converted":
-      return "bg-orange-100 text-orange-900";
-    case "cancelled":
-    case "rejected":
-      return "bg-red-100 text-red-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
-}
-
-type Lead = {
-  _id: string;
-  name: string;
-  phone: string;
-  propertyType?: string;
-  preferredDate?: string;
-  status: string;
-  createdAt: string;
+type LeadsQueryData = {
+  leads: LeadRow[];
+  pagination: { page: number; pages: number; total: number };
 };
 
 export default function LeadsPage() {
@@ -80,6 +39,17 @@ export default function LeadsPage() {
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
   const [page, setPage] = useState(1);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
+  const [crmByLead, setCrmByLead] = useState<Record<string, LeadCRMState>>({});
+
+  const { data: agents = [] } = useQuery({
+    queryKey: ["admin-agents"],
+    queryFn: async () => {
+      const res = await api.get<{ data: AgentOption[] }>("/admin/agents");
+      return res.data.data;
+    },
+  });
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin-leads", status, searchDebounced, page],
@@ -91,7 +61,7 @@ export default function LeadsPage() {
       if (searchDebounced.trim()) params.set("search", searchDebounced.trim());
       const res = await api.get<{
         success: boolean;
-        data: { leads: Lead[]; pagination: { page: number; pages: number; total: number } };
+        data: LeadsQueryData;
       }>(`/admin/leads?${params}`);
       return res.data.data;
     },
@@ -101,13 +71,58 @@ export default function LeadsPage() {
     mutationFn: async ({ id, newStatus }: { id: string; newStatus: string }) => {
       await api.patch(`/admin/lead/${id}/status`, { status: newStatus });
     },
+    onMutate: async ({ id, newStatus }) => {
+      await qc.cancelQueries({ queryKey: ["admin-leads"] });
+      const previousEntries = qc.getQueriesData<LeadsQueryData>({ queryKey: ["admin-leads"] });
+
+      qc.setQueriesData<LeadsQueryData>({ queryKey: ["admin-leads"] }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          leads: old.leads.map((l) => (l._id === id ? { ...l, status: newStatus } : l)),
+        };
+      });
+
+      setSelectedLead((cur) => (cur && cur._id === id ? { ...cur, status: newStatus } : cur));
+
+      return { previousEntries };
+    },
     onSuccess: () => {
       success("Lead status updated");
       qc.invalidateQueries({ queryKey: ["admin-leads"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
     },
-    onError: () => error("Could not update status"),
+    onError: (_err, _vars, ctx) => {
+      error("Could not update status");
+      if (ctx?.previousEntries) {
+        for (const [key, val] of ctx.previousEntries) {
+          if (val !== undefined) qc.setQueryData(key, val);
+        }
+      }
+    },
   });
+
+  const assignMutation = useMutation({
+    mutationFn: async ({
+      leadId,
+      assignedAgentId,
+    }: {
+      leadId: string;
+      assignedAgentId: string | null;
+    }) => {
+      await api.patch(`/admin/lead/${leadId}/assign`, { assignedAgentId });
+    },
+    onSuccess: () => {
+      success("Field agent updated");
+      void qc.invalidateQueries({ queryKey: ["admin-leads"] });
+    },
+    onError: () => error("Could not update assignment"),
+  });
+
+  const openDetails = (lead: LeadRow) => {
+    setSelectedLead(lead);
+    setDrawerOpen(true);
+  };
 
   const exportCsv = async () => {
     try {
@@ -116,7 +131,7 @@ export default function LeadsPage() {
       params.set("limit", "500");
       if (status !== "all") params.set("status", status);
       if (searchDebounced.trim()) params.set("search", searchDebounced.trim());
-      const res = await api.get<{ data: { leads: Lead[] } }>(`/admin/leads?${params}`);
+      const res = await api.get<{ data: { leads: LeadRow[] } }>(`/admin/leads?${params}`);
       const rows = res.data.data.leads.map((l) => ({
         ID: l._id,
         Name: l.name,
@@ -124,6 +139,7 @@ export default function LeadsPage() {
         PropertyType: l.propertyType || "",
         Date: l.preferredDate ? format(new Date(l.preferredDate), "yyyy-MM-dd") : "",
         Status: l.status,
+        Assigned: l.assignedAgent?.name || "",
         Created: format(new Date(l.createdAt), "yyyy-MM-dd HH:mm"),
       }));
       downloadCsv(`leads-${format(new Date(), "yyyyMMdd-HHmm")}.csv`, rows);
@@ -136,6 +152,12 @@ export default function LeadsPage() {
     setPage(1);
     setSearchDebounced(search);
   };
+
+  useEffect(() => {
+    if (!drawerOpen || !selectedLead?._id || !data?.leads?.length) return;
+    const fresh = data.leads.find((l) => l._id === selectedLead._id);
+    if (fresh) setSelectedLead(fresh);
+  }, [data, drawerOpen, selectedLead?._id]);
 
   return (
     <div className="space-y-6">
@@ -150,7 +172,7 @@ export default function LeadsPage() {
       <Card>
         <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-end">
           <div className="space-y-2 md:w-48">
-            <label className="text-xs font-medium text-gray-500">Status</label>
+            <label className="text-xs font-medium text-gray-500">Filter by status</label>
             <Select
               value={status}
               onValueChange={(v) => {
@@ -163,7 +185,7 @@ export default function LeadsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                {STATUSES.map((s) => (
+                {LEAD_STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
                     {adminStatusLabel(s)}
                   </SelectItem>
@@ -201,14 +223,14 @@ export default function LeadsPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Property</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                <TableRow className="bg-gray-50/80 hover:bg-gray-50/80">
+                  <TableHead className="font-semibold text-gray-700">ID</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Name</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Phone</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Property</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Date</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                  <TableHead className="text-right font-semibold text-gray-700">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -220,45 +242,30 @@ export default function LeadsPage() {
                   </TableRow>
                 ) : (
                   data.leads.map((lead) => (
-                    <TableRow key={lead._id}>
-                      <TableCell className="max-w-[100px] truncate font-mono text-xs">{lead._id}</TableCell>
-                      <TableCell className="font-medium">{lead.name}</TableCell>
-                      <TableCell>{lead.phone}</TableCell>
-                      <TableCell>{lead.propertyType || "—"}</TableCell>
+                    <TableRow key={lead._id} className="transition-colors hover:bg-gray-50/60">
+                      <TableCell className="max-w-[100px] truncate font-mono text-xs text-gray-500">{lead._id}</TableCell>
+                      <TableCell className="font-medium text-gray-900">{lead.name}</TableCell>
+                      <TableCell className="text-gray-700">{lead.phone}</TableCell>
+                      <TableCell className="text-gray-600">{lead.propertyType || "—"}</TableCell>
                       <TableCell className="whitespace-nowrap text-gray-600">
                         {lead.preferredDate
                           ? format(new Date(lead.preferredDate), "MMM d, yyyy")
                           : format(new Date(lead.createdAt), "MMM d, yyyy")}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={cn(
-                            "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-                            statusBadgeClass(lead.status)
-                          )}
-                        >
-                          {adminStatusLabel(lead.status)}
-                        </span>
+                        <StatusBadge status={lead.status} />
                       </TableCell>
-                      <TableCell>
-                        <Select
-                          value={lead.status}
-                          onValueChange={(newStatus) =>
-                            mutation.mutate({ id: lead._id, newStatus })
-                          }
-                          disabled={mutation.isPending}
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-gray-200 font-medium text-gray-700 shadow-sm transition-all hover:border-emerald-300 hover:bg-emerald-50/50 hover:text-emerald-900"
+                          onClick={() => openDetails(lead)}
                         >
-                          <SelectTrigger className="h-9 w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {STATUSES.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {adminStatusLabel(s)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          <PanelRight className="h-3.5 w-3.5" />
+                          View details
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -296,6 +303,24 @@ export default function LeadsPage() {
           </div>
         </div>
       )}
+
+      <LeadDetailsDrawer
+        lead={selectedLead}
+        open={drawerOpen}
+        onOpenChange={(o) => {
+          setDrawerOpen(o);
+          if (!o) setSelectedLead(null);
+        }}
+        crmByLead={crmByLead}
+        setCrmByLead={setCrmByLead}
+        onStatusChange={(id, newStatus) => mutation.mutate({ id, newStatus })}
+        isStatusSaving={mutation.isPending}
+        agents={agents}
+        onAssignAgent={(leadId, assignedAgentId) =>
+          assignMutation.mutate({ leadId, assignedAgentId })
+        }
+        isAssignSaving={assignMutation.isPending}
+      />
     </div>
   );
 }

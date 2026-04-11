@@ -1,103 +1,50 @@
-# GreenPad - Solar Referral Rewards App
+# GreenPad
 
-A React Native Expo app for solar referral rewards.
+Monorepo for the GreenPad solar referral product: **mobile app** (Expo), **admin dashboard** (Next.js), and **API** (Node/Express/MongoDB).
 
-## Project Structure
+## Layout
 
 ```
-src/
-├── components/
-│   └── ui/
-│       ├── Button.tsx
-│       └── index.ts
-├── constants/
-│   ├── theme.ts          # Colors, sizes, shadows
-│   └── index.ts          # API config, storage keys
-├── navigation/
-│   ├── AuthNavigator.tsx # Splash → Login → OTP
-│   ├── MainNavigator.tsx # Bottom tabs (Home, Wallet, Refer, Profile)
-│   ├── RootNavigator.tsx # Conditional auth/main navigation
-│   └── types.ts          # TypeScript navigation types
-├── screens/
-│   ├── auth/
-│   │   ├── SplashScreen.tsx
-│   │   ├── LoginScreen.tsx
-│   │   └── OTPScreen.tsx
-│   └── main/
-│       ├── HomeScreen.tsx
-│       ├── WalletScreen.tsx
-│       ├── ReferScreen.tsx
-│       └── ProfileScreen.tsx
-├── services/
-│   ├── api.ts            # Axios instance with interceptors
-│   └── auth.service.ts   # sendOTP, verifyOTP
-└── stores/
-    └── authStore.ts      # Zustand store with secure storage
+greenpad-app-01/
+├── mobile-app/      # React Native + Expo (user app)
+├── greenpad-admin/  # Next.js (internal CRM / admin)
+└── backend/         # Express REST API + MongoDB
 ```
 
-## Theme Colors
+## Prerequisites
 
-- **Primary**: `#10B981` (Green)
-- **Secondary**: `#F59E0B` (Amber)
-- **Background**: `#F9FAFB` (Light gray)
+- Node.js 20+ recommended  
+- MongoDB for `backend/`  
+- For physical devices: set API URL in `mobile-app` (see `mobile-app/src/constants/index.ts` and `app.json` extras).
 
-## Features
+## Install & run
 
-### Authentication
-- Phone number input with +91 format
-- 10-digit validation
-- 6-box OTP input with auto-focus
-- 60-second resend timer
-- Mock OTP accepts any 6 digits
-- Token persistence with expo-secure-store
+From the **repository root**:
 
-### Navigation
-- Auth flow: Splash → Login → OTP
-- Main tabs: Home, Wallet, Refer, Profile
-- Conditional navigation based on auth state
-- Ionicons for tab icons
+| Area | Command | Notes |
+|------|---------|--------|
+| Mobile | `cd mobile-app && npm install && npx expo start` | Or `npm run mobile` from root after installing deps in `mobile-app`. |
+| Admin | `cd greenpad-admin && npm install && npm run dev` | `NEXT_PUBLIC_API_URL` from committed `.env.development`; override with `.env.local`. Production: `.env.production` or host env. |
+| API | `cd backend && npm install && npm run dev` | Or `npm run api` from root. |
 
-### API Layer
-- Axios instance with base URL
-- Automatic token injection via interceptors
-- Mock responses for development
+Root `package.json` scripts use `npm run … --prefix <folder>` so you can run `npm run mobile` **after** each package has been `npm install`’d once in its own directory.
 
-## Getting Started
+## Mobile app (`mobile-app/`)
 
-```bash
-# Install dependencies
-npm install
+- Expo SDK 54, React Navigation, Zustand, SecureStore.  
+- See `mobile-app/README.md` for app-specific notes.
 
-# Start development server
-npx expo start
+## Admin (`greenpad-admin/`)
 
-# Run on Android
-npx expo start --android
+- Central client: **`src/lib/api.ts`** (Axios `baseURL` = `process.env.NEXT_PUBLIC_API_URL` only).
+  - **`next dev`:** values from **`.env.development`** (committed default). Override with **`.env.local`**.
+  - **Production:** set **`NEXT_PUBLIC_API_URL`** in `.env.production` or the host (see `greenpad-admin/.env.production.example`).
 
-# Run on iOS
-npx expo start --ios
-```
+## Backend (`backend/`)
 
-## Testing Authentication Flow
+- **Development:** copy `backend/.env.example` → `backend/.env` and configure `MONGODB_URI`, `JWT_SECRET`, etc. Run with `npm run dev` (loads `.env`, `NODE_ENV=development`).
+- **Production:** copy `backend/.env.production.example` → `backend/.env.production` on the server, or inject the same variables via your platform. Run with `npm start` (loads `.env.production`, `NODE_ENV=production`).
 
-1. App launches with animated splash screen (2 seconds)
-2. Login screen appears with phone input
-3. Enter any 10-digit number (e.g., 9876543210)
-4. OTP screen appears with 6 input boxes
-5. Enter any 6 digits to verify
-6. Bottom tabs appear (Home, Wallet, Refer, Profile)
-7. Go to Profile tab and tap Logout
-8. Returns to Login screen with cleared token
+## Theme (mobile)
 
-## Dependencies
-
-- expo ~54.0.0
-- react-native
-- @react-navigation/native
-- @react-navigation/native-stack
-- @react-navigation/bottom-tabs
-- zustand
-- expo-secure-store
-- expo-linear-gradient
-- axios
-- @expo/vector-icons
+- Primary: `#10B981` · Secondary: `#F59E0B` · Background: `#F9FAFB`

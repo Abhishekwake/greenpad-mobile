@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Users, ClipboardList, TrendingUp, Coins } from "lucide-react";
+import { Users, ClipboardList, TrendingUp, Coins, Package } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -27,6 +27,7 @@ type StatsData = {
   conversions: number;
   conversionRate: number;
   totalCoinsIssued: number;
+  pendingRedemptions: number;
   leadsByStatus: Record<string, number>;
   signupsPerDay: { date: string; count: number }[];
   recentTransactions: Array<{
@@ -82,9 +83,10 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {isLoading ? (
           <>
+            <StatSkeleton />
             <StatSkeleton />
             <StatSkeleton />
             <StatSkeleton />
@@ -126,6 +128,18 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold">{Number(data.totalCoinsIssued).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+            <Card className="border-amber-200 bg-amber-50/40">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-amber-900">Pending installs</CardTitle>
+                <Package className="h-5 w-5 text-amber-700" />
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-3xl font-bold text-amber-950">{data.pendingRedemptions ?? 0}</p>
+                <Button variant="outline" size="sm" className="border-amber-300 text-amber-950" asChild>
+                  <Link href="/redemptions">Open queue</Link>
+                </Button>
               </CardContent>
             </Card>
           </>
