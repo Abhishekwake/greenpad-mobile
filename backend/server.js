@@ -29,22 +29,36 @@ const migrateLeadStatuses = require('./utils/migrateLeadStatuses');
 
 const app = express();
 
+// Render / reverse proxies set X-Forwarded-For. Required for correct req.ip and so
+// express-rate-limit does not throw ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
+
 // Security
 app.use(helmet());
 app.use(cors(buildCorsOptions()));
 
-// Rate limiting (relaxed in development)
+// Rate limiting (relaxed in development). Must run after trust proxy.
 const isDev = process.env.NODE_ENV === 'development';
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isDev ? 1000 : 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later' },
 });
 app.use('/api/', limiter);
 
+const otpMaxRaw = process.env.OTP_RATE_LIMIT_MAX;
+const otpMaxProd =
+  otpMaxRaw !== undefined && otpMaxRaw !== '' && Number.isFinite(Number(otpMaxRaw)) && Number(otpMaxRaw) > 0
+    ? Math.min(100, Math.floor(Number(otpMaxRaw)))
+    : 15;
+
 const otpLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: isDev ? 50 : 3,
+  max: isDev ? 50 : otpMaxProd,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { success: false, message: 'Too many OTP requests. Wait 1 minute.' },
 });
 
