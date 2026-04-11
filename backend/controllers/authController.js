@@ -9,8 +9,14 @@ function signToken(id) {
   });
 }
 
+function shouldExposeOtpInResponse() {
+  return (
+    process.env.NODE_ENV === 'development' || process.env.EXPOSE_OTP_IN_RESPONSE === 'true'
+  );
+}
+
 // POST /api/auth/send-otp
-exports.sendOTP = async (req, res, next) => {
+exports.sendOTP = async (req, res) => {
   try {
     const { phone } = req.body;
 
@@ -20,16 +26,37 @@ exports.sendOTP = async (req, res, next) => {
 
     const otp = generateOTP();
     storeOTP(phone, otp);
-    await sendOTPViaSMS(phone, otp);
 
-    res.json({
+    console.log('[send-otp] ip=%s phone=%s****', req.ip, String(phone).slice(0, 2));
+    console.log('Generated OTP:', otp);
+
+    try {
+      await sendOTPViaSMS(phone, otp);
+    } catch (smsErr) {
+      console.error('[send-otp] SMS helper error (OTP still stored):', smsErr?.message || smsErr);
+    }
+
+    const exposeOtp = shouldExposeOtpInResponse();
+    if (!exposeOtp && process.env.NODE_ENV === 'production') {
+      console.log('[send-otp] OTP not included in JSON (set EXPOSE_OTP_IN_RESPONSE=true on host to test)');
+    }
+
+    return res.json({
       success: true,
       message: 'OTP sent successfully',
-      // Return OTP in development for easy testing
-      ...(process.env.NODE_ENV === 'development' && { otp }),
+      ...(exposeOtp && { otp }),
     });
   } catch (error) {
-    next(error);
+    console.error('[send-otp] fatal:', error);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message:
+          process.env.NODE_ENV === 'development'
+            ? error.message || 'Server error'
+            : 'Failed to send OTP. Please try again.',
+      });
+    }
   }
 };
 

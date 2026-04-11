@@ -14,7 +14,7 @@ export interface UserData {
 interface SendOTPResponse {
   success: boolean;
   message: string;
-  otp?: string; // returned only in dev mode
+  otp?: string; // when API returns it (local dev or EXPOSE_OTP_IN_RESPONSE on host)
 }
 
 interface VerifyOTPResponse {

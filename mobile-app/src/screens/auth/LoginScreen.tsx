@@ -22,7 +22,7 @@ import GvLogo from '../../components/GvLogo';
 type AuthStackParamList = {
   Splash: undefined;
   Login: undefined;
-  OTP: { phoneNumber: string };
+  OTP: { phoneNumber: string; devOtp?: string };
 };
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -74,9 +74,12 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       if (response.success) {
         savePhoneNumber(fullNumber);
         if (response.otp) {
-          Toast.show({ type: 'info', text1: 'DEV OTP', text2: `Your OTP is ${response.otp}` });
+          Toast.show({ type: 'info', text1: 'OTP ready', text2: 'Shown on the next screen for testing' });
         }
-        navigation.navigate('OTP', { phoneNumber: fullNumber });
+        navigation.navigate('OTP', {
+          phoneNumber: fullNumber,
+          ...(response.otp ? { devOtp: response.otp } : {}),
+        });
       } else {
         Toast.show({ type: 'error', text1: 'Error', text2: response.message || 'Failed to send OTP' });
       }

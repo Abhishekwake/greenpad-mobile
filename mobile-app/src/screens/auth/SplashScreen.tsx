@@ -9,7 +9,7 @@ import GvLogo from '../../components/GvLogo';
 type AuthStackParamList = {
   Splash: undefined;
   Login: undefined;
-  OTP: { phoneNumber: string };
+  OTP: { phoneNumber: string; devOtp?: string };
 };
 
 type SplashScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Splash'>;

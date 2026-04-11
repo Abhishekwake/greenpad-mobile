@@ -23,7 +23,7 @@ import type { UserData } from '../../stores/authStore';
 type AuthStackParamList = {
   Splash: undefined;
   Login: undefined;
-  OTP: { phoneNumber: string };
+  OTP: { phoneNumber: string; devOtp?: string };
 };
 
 type OTPScreenNavigationProp = NativeStackNavigationProp<AuthStackParamList, 'OTP'>;
@@ -34,15 +34,31 @@ interface Props {
   route: OTPScreenRouteProp;
 }
 
+function digitsToOtpArray(code: string): string[] {
+  const digits = code.replace(/\D/g, '').slice(0, OTP_CONFIG.LENGTH).split('');
+  const next = new Array(OTP_CONFIG.LENGTH).fill('');
+  digits.forEach((d, i) => {
+    next[i] = d;
+  });
+  return next;
+}
+
 const OTPScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { phoneNumber } = route.params;
+  const { phoneNumber, devOtp: initialDevOtp } = route.params;
   const [otp, setOtp] = useState<string[]>(new Array(OTP_CONFIG.LENGTH).fill(''));
   const [isLoading, setIsLoading] = useState(false);
   const [timer, setTimer] = useState(OTP_CONFIG.RESEND_TIMER);
   const [canResend, setCanResend] = useState(false);
+  const [serverOtpPreview, setServerOtpPreview] = useState<string | undefined>(initialDevOtp);
 
   const inputRefs = useRef<(TextInput | null)[]>([]);
   const { login } = useAuthStore();
+
+  useEffect(() => {
+    if (initialDevOtp && /^\d{6}$/.test(initialDevOtp)) {
+      setOtp(digitsToOtpArray(initialDevOtp));
+    }
+  }, [initialDevOtp]);
 
   useEffect(() => {
     inputRefs.current[0]?.focus();
@@ -133,10 +149,16 @@ const OTPScreen: React.FC<Props> = ({ navigation, route }) => {
         setCanResend(false);
         setOtp(new Array(OTP_CONFIG.LENGTH).fill(''));
         inputRefs.current[0]?.focus();
+        if (response.otp) {
+          setServerOtpPreview(response.otp);
+          if (/^\d{6}$/.test(response.otp)) {
+            setOtp(digitsToOtpArray(response.otp));
+          }
+        }
         Toast.show({
           type: 'success',
           text1: 'OTP Sent',
-          text2: response.otp ? `DEV OTP: ${response.otp}` : 'Check your phone',
+          text2: response.otp ? 'Code shown above for testing' : 'Check your phone',
         });
       } else {
         Toast.show({ type: 'error', text1: 'Error', text2: response.message || 'Failed to resend OTP' });
@@ -181,6 +203,16 @@ const OTPScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={styles.phoneNumber}>{maskedPhone}</Text>
           </Text>
         </View>
+
+        {serverOtpPreview ? (
+          <View style={styles.serverOtpBanner} accessibilityLabel="Server test OTP">
+            <Text style={styles.serverOtpLabel}>Testing — code from server</Text>
+            <Text style={styles.serverOtpValue} selectable>
+              {serverOtpPreview}
+            </Text>
+            <Text style={styles.serverOtpHint}>Remove EXPOSE_OTP_IN_RESPONSE when SMS is live.</Text>
+          </View>
+        ) : null}
 
         <View style={styles.otpContainer}>
           {otp.map((digit, index) => (
@@ -272,6 +304,32 @@ const styles = StyleSheet.create({
   phoneNumber: {
     color: COLORS.gray[700],
     fontWeight: '600',
+  },
+  serverOtpBanner: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: SIZES.radius,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  serverOtpLabel: {
+    fontSize: SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.gray[700],
+    marginBottom: 6,
+  },
+  serverOtpValue: {
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: 4,
+    color: COLORS.gray[900],
+    marginBottom: 8,
+  },
+  serverOtpHint: {
+    fontSize: SIZES.sm,
+    color: COLORS.gray[500],
   },
   otpContainer: {
     flexDirection: 'row',
