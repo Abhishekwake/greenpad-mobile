@@ -3,8 +3,21 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
 import { format } from "date-fns";
-import { Building2, Calendar, Clock, MapPin, Phone, User, Users } from "lucide-react";
+import {
+  Building2,
+  Calendar,
+  CheckCircle,
+  Clock,
+  MapPin,
+  Phone,
+  Rocket,
+  User,
+  Users,
+} from "lucide-react";
 import {
   Drawer,
   DrawerBody,
@@ -26,6 +39,8 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/crm/StatusBadge";
 import { adminStatusLabel, LEAD_STATUSES, SALES_FUNNEL } from "@/lib/lead-status";
+import { createProject, getProjects } from "@/lib/projectApi";
+import { useToast } from "@/components/ui/toast";
 import type { LeadRow } from "@/types/lead";
 
 export type TimelineEntry = {
@@ -60,6 +75,12 @@ const UNASSIGNED_VALUE = "__unassigned__";
 
 function isPopulatedUser(u: LeadRow["userId"]): u is Exclude<LeadRow["userId"], string> {
   return typeof u === "object" && u !== null && "name" in u;
+}
+
+function resolveCustomerId(userId: LeadRow["userId"]): string | null {
+  if (!userId) return null;
+  if (typeof userId === "string") return userId;
+  return userId._id ?? null;
 }
 
 function seedTimeline(lead: LeadRow): TimelineEntry[] {
@@ -134,9 +155,43 @@ export function LeadDetailsDrawer({
   onAssignAgent,
   isAssignSaving,
 }: Props) {
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { success, error: toastError } = useToast();
   const [noteDraft, setNoteDraft] = useState("");
 
   const leadId = lead?._id;
+
+  const { data: projectsData, isLoading: projectsLoading, refetch: refetchProjects } = useQuery({
+    queryKey: ["project-for-lead", leadId],
+    queryFn: async () => {
+      const res = await getProjects({ leadId: lead!._id });
+      return res.data;
+    },
+    enabled: !!lead && lead.status === "converted" && open,
+  });
+
+  const existingProject = projectsData?.data?.[0];
+
+  const createProjectMutation = useMutation({
+    mutationFn: async () => {
+      if (!lead) throw new Error("No lead selected");
+      const customerId = resolveCustomerId(lead.userId);
+      if (!customerId) throw new Error("No customer user linked to this lead");
+      await createProject({ leadId: lead._id, customerId });
+    },
+    onSuccess: () => {
+      if (lead) success(`Project created for ${lead.name}`);
+      void refetchProjects();
+      void qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (err: unknown) => {
+      const msg = axios.isAxiosError(err)
+        ? String(err.response?.data?.message || err.message)
+        : "Failed to create project";
+      toastError(msg);
+    },
+  });
 
   useEffect(() => {
     if (!leadId || !open) return;
@@ -470,6 +525,51 @@ export function LeadDetailsDrawer({
               ))}
             </ol>
           </section>
+
+          {lead.status === "converted" && (
+            <div className="mt-6 border-t pt-6">
+              {!projectsLoading && !existingProject ? (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="flex items-start gap-2">
+                    <Rocket className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-green-800">Ready to start installation?</p>
+                      <p className="mt-1 text-xs text-green-700">
+                        This lead has been converted. Create a project to begin tracking the solar installation.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => createProjectMutation.mutate()}
+                    disabled={createProjectMutation.isPending}
+                    className="mt-3 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                  >
+                    {createProjectMutation.isPending ? "Creating…" : "🚀 Create project"}
+                  </button>
+                </div>
+              ) : null}
+
+              {existingProject ? (
+                <div className="flex items-center justify-between rounded-xl border bg-gray-50 p-4">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-green-500" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Project active</p>
+                      <p className="text-xs text-gray-500">Installation in progress</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/projects")}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    View project →
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
         </DrawerBody>
 
         <DrawerFooter className="flex flex-row items-center justify-end gap-2">

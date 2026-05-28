@@ -1,4 +1,13 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
+
+/**
+ * Windows / some routers fail Node's SRV lookup for mongodb+srv while nslookup works.
+ * Use public resolvers so Atlas `mongodb+srv://` URIs connect reliably in dev.
+ */
+if (process.platform === 'win32' && String(process.env.MONGODB_URI || '').startsWith('mongodb+srv://')) {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+}
 
 /**
  * Connect to MongoDB (local or Atlas). Set `MONGODB_URI` in `.env` / `.env.production`.

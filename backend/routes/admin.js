@@ -19,6 +19,20 @@ const {
   createAgent,
   updateAgent,
 } = require('../controllers/adminController');
+const {
+  getAdminProjects,
+  getAdminProjectById,
+  updateProjectStage,
+  updateProjectTask,
+} = require('../controllers/projectController');
+const {
+  getWorkflow,
+  putWorkflow,
+  listRoles,
+  createRole,
+  updateRole,
+  deleteRole,
+} = require('../controllers/workflowController');
 const { protect } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 
@@ -42,5 +56,17 @@ router.put('/agent/:id', updateAgent);
 router.post('/reward', createReward);
 router.put('/reward/:id', updateReward);
 router.delete('/reward/:id', deleteReward);
+
+router.get('/projects', getAdminProjects);
+router.get('/project/:id', getAdminProjectById);
+router.patch('/project/:id/stage', updateProjectStage);
+router.patch('/project/:id/task', updateProjectTask);
+
+router.get('/workflow', getWorkflow);
+router.put('/workflow', putWorkflow);
+router.get('/roles', listRoles);
+router.post('/role', createRole);
+router.put('/role/:id', updateRole);
+router.delete('/role/:id', deleteRole);
 
 module.exports = router;

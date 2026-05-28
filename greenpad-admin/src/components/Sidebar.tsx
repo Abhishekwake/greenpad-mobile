@@ -11,11 +11,16 @@ import {
   CreditCard,
   SlidersHorizontal,
   UsersRound,
+  Folder,
+  GitBranch,
+  Shield,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const nav = [
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+
+const nav: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/users", label: "Users", icon: UserPlus },
@@ -24,6 +29,20 @@ const nav = [
   { href: "/redemptions", label: "Redemptions", icon: Package },
   { href: "/transactions", label: "Transactions", icon: CreditCard },
   { href: "/settings", label: "Coin rules", icon: SlidersHorizontal },
+];
+
+const navSections: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Operations",
+    items: [{ href: "/projects", label: "Projects", icon: Folder }],
+  },
+  {
+    title: "Configuration",
+    items: [
+      { href: "/workflow", label: "Workflow builder", icon: GitBranch },
+      { href: "/roles-config", label: "Roles & team", icon: Shield },
+    ],
+  },
 ];
 
 export default function Sidebar({
@@ -68,6 +87,30 @@ export default function Sidebar({
             </Link>
           );
         })}
+        {navSections.map(({ title, items }) => (
+          <div key={title} className="mt-3">
+            <div className="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-white/60">
+              {title}
+            </div>
+            {items.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + "/");
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => onNavigate?.()}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-white/10",
+                    active && "bg-white/20"
+                  )}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
       <div className="absolute bottom-0 left-0 right-0 p-4">
         <button

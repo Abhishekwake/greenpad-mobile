@@ -25,6 +25,7 @@ const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorHandler');
 const seedRewards = require('./utils/seedRewards');
 const seedCoinSettings = require('./utils/seedCoinSettings');
+const seedWorkflow = require('./utils/seedWorkflow');
 const migrateLeadStatuses = require('./utils/migrateLeadStatuses');
 
 const app = express();
@@ -95,6 +96,7 @@ app.use('/api/referral', require('./routes/referral'));
 app.use('/api/lead', require('./routes/lead'));
 app.use('/api/rewards', require('./routes/rewards'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/project', require('./routes/project'));
 app.use('/api/videos', require('./routes/videos'));
 
 // 404
@@ -113,6 +115,7 @@ const start = async () => {
   await migrateLeadStatuses();
   await seedRewards();
   await seedCoinSettings();
+  await seedWorkflow();
   app.listen(PORT, '0.0.0.0', () => {
     const lan = getLanIPv4();
     console.log(`Server running in ${process.env.NODE_ENV} on port ${PORT}`);

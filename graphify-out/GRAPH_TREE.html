@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GreenPad App — graphify tree viewer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      margin: 20px 0 0 24px;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: #1e3a56;
+    }
+    .controls {
+      margin: 20px 0 15px 24px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 8px 18px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s ease-in-out;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:active {
+      background: #004085;
+    }
+    #tree-container {
+      width: calc(100vw - 48px); /* Adjust for body margin/padding */
+      height: 85vh;
+      overflow: auto;
+      border-radius: 8px;
+      background: #fff;
+      margin-left: 24px;
+      margin-right: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: 1px solid #ddd;
+    }
+    svg {
+      background: #fff;
+      border-radius: 8px;
+      display: block; /* Important for D3 */
+    }
+    .node circle {
+      stroke-width: 2.5px;
+    }
+    .node text { /* Base style for the <text> container */
+      font: 13px 'Segoe UI', sans-serif;
+      paint-order: stroke fill; /* Ensures text is readable over lines */
+      stroke: #fff; /* White halo */
+      stroke-width: 3px; /* Halo thickness */
+      stroke-linejoin: round;
+      stroke-opacity: 0.85; /* Halo opacity */
+    }
+    .link {
+      fill: none;
+      stroke-opacity: 0.7;
+      stroke-width: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h1>GreenPad App — Knowledge Graph</h1>
+  <div class="controls">
+    <button onclick="expandAll()">Expand All</button>
+    <button onclick="collapseAll()">Collapse All</button>
+    <button onclick="resetView()">Reset View</button>
+  </div>
+  <div id="tree-container">
+    <svg id="tree-svg" width="6000" height="8000"></svg>
+  </div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    const initialJsonData = {"name":"GreenPad App","total_count":739,"children":[{"name":"backend","total_count":172,"children":[{"name":"config","total_count":8,"children":[{"name":"corsOptions.js","total_count":1,"children":[{"name":"buildCorsOptions()","total_count":1,"children":[]}]},{"name":"db.js","total_count":2,"children":[{"name":"connectDB()","total_count":1,"children":[]},{"name":"mongoose","total_count":1,"children":[]}]},{"name":"loadEnv.js","total_count":4,"children":[{"name":"BACKEND_ROOT","total_count":1,"children":[]},{"name":"dotenv","total_count":1,"children":[]},{"name":"loadEnv()","total_count":1,"children":[]},{"name":"path","total_count":1,"children":[]}]},{"name":"cloudinary.js","total_count":1,"children":[]}]},{"name":"controllers","total_count":61,"children":[{"name":"adminController.js","total_count":28,"children":[{"name":"Agent","total_count":1,"children":[]},{"name":"allowed","total_count":1,"children":[]},{"name":"AppSettings","total_count":1,"children":[]},{"name":"c","total_count":1,"children":[]},{"name":"coins","total_count":1,"children":[]},{"name":"dayMap","total_count":1,"children":[]},{"name":"digits","total_count":1,"children":[]},{"name":"end","total_count":1,"children":[]},{"name":"escapeRegex()","total_count":1,"children":[]},{"name":"filter","total_count":1,"children":[]},{"name":"keys","total_count":1,"children":[]},{"name":"last30DaysKeys()","total_count":1,"children":[]},{"name":"Lead","total_count":1,"children":[]},{"name":"leadStatuses","total_count":1,"children":[]},{"name":"mongoose","total_count":1,"children":[]},{"name":"n","total_count":1,"children":[]},{"name":"q","total_count":1,"children":[]},{"name":"redemptions","total_count":1,"children":[]},{"name":"Reward","total_count":1,"children":[]},{"name":"rewardIds","total_count":1,"children":[]},{"name":"rewardMap","total_count":1,"children":[]},{"name":"signupsPerDay","total_count":1,"children":[]},{"name":"thirtyDaysAgo","total_count":1,"children":[]},{"name":"Transaction","total_count":1,"children":[]},{"name":"updates","total_count":1,"children":[]},{"name":"User","total_count":1,"children":[]},{"name":"validStatuses","total_count":1,"children":[]},{"name":"{ getCoinSettings }","total_count":1,"children":[]}]},{"name":"authController.js","total_count":11,"children":[{"name":"adminEmail","total_count":1,"children":[]},{"name":"exposeOtp","total_count":1,"children":[]},{"name":"jwt","total_count":1,"children":[]},{"name":"otp","total_count":1,"children":[]},{"name":"result","total_count":1,"children":[]},{"name":"shouldExposeOtpInResponse()","total_count":1,"children":[]},{"name":"signToken()","total_count":1,"children":[]},{"name":"token","total_count":1,"children":[]},{"name":"Transaction","total_count":1,"children":[]},{"name":"User","total_count":1,"children":[]},{"name":"{ generateOTP, storeOTP, verifyOTP, sendOTPViaSMS }","total_count":1,"children":[]}]},{"name":"leadController.js","total_count":6,"children":[{"name":"Lead","total_count":1,"children":[]},{"name":"legacyToLost","total_count":1,"children":[]},{"name":"sanitized","total_count":1,"children":[]},{"name":"Transaction","total_count":1,"children":[]},{"name":"User","total_count":1,"children":[]},{"name":"{ getCoinSettings }","total_count":1,"children":[]}]},{"name":"referralController.js","total_count":3,"children":[{"name":"totalReferralEarnings","total_count":1,"children":[]},{"name":"Transaction","total_count":1,"children":[]},{"name":"User","total_count":1,"children":[]}]},{"name":"userController.js","total_count":5,"children":[{"name":"allowed","total_count":1,"children":[]},{"name":"Lead","total_count":1,"children":[]},{"name":"Transaction","total_count":1,"children":[]},{"name":"updates","total_count":1,"children":[]},{"name":"User","total_count":1,"children":[]}]},{"name":"videoController.js","total_count":4,"children":[{"name":"cloudinary","total_count":1,"children":[]},{"name":"VIDEO_METADATA","total_count":1,"children":[]},{"name":"VIDEO_PUBLIC_IDS","total_count":1,"children":[]},{"name":"videos","total_count":1,"children":[]}]},{"name":"walletController.js","total_count":4,"children":[{"name":"filter","total_count":1,"children":[]},{"name":"Reward","total_count":1,"children":[]},{"name":"Transaction","total_count":1,"children":[]},{"name":"User","total_count":1,"children":[]}]}]},{"name":"middleware","total_count":5,"children":[{"name":"admin.js","total_count":1,"children":[{"name":"requireAdmin()","total_count":1,"children":[]}]},{"name":"auth.js","total_count":3,"children":[{"name":"jwt","total_count":1,"children":[]},{"name":"protect()","total_count":1,"children":[]},{"name":"User","total_count":1,"children":[]}]},{"name":"errorHandler.js","total_count":1,"children":[{"name":"errorHandler()","total_count":1,"children":[]}]}]},{"name":"models","total_count":13,"children":[{"name":"Agent.js","total_count":2,"children":[{"name":"agentSchema","total_count":1,"children":[]},{"name":"mongoose","total_count":1,"children":[]}]},{"name":"AppSettings.js","total_count":2,"children":[{"name":"appSettingsSchema","total_count":1,"children":[]},{"name":"mongoose","total_count":1,"children":[]}]},{"name":"Lead.js","total_count":2,"children":[{"name":"leadSchema","total_count":1,"children":[]},{"name":"mongoose","total_count":1,"children":[]}]},{"name":"Reward.js","total_count":2,"children":[{"name":"mongoose","total_count":1,"children":[]},{"name":"rewardSchema","total_count":1,"children":[]}]},{"name":"Transaction.js","total_count":2,"children":[{"name":"mongoose","total_count":1,"children":[]},{"name":"transactionSchema","total_count":1,"children":[]}]},{"name":"User.js","total_count":3,"children":[{"name":"mongoose","total_count":1,"children":[]},{"name":"userSchema","total_count":1,"children":[]},{"name":"{ generateReferralCode }","total_count":1,"children":[]}]}]},{"name":"package.json","total_count":25,"children":[{"name":"author","total_count":1,"children":[]},{"name":"bcryptjs","total_count":1,"children":[]},{"name":"cloudinary","total_count":1,"children":[]},{"name":"cors","total_count":1,"children":[]},{"name":"cross-env","total_count":1,"children":[]},{"name":"dependencies","total_count":1,"children":[]},{"name":"description","total_count":1,"children":[]},{"name":"dev","total_count":1,"children":[]},{"name":"devDependencies","total_count":1,"children":[]},{"name":"dotenv","total_count":1,"children":[]},{"name":"express","total_count":1,"children":[]},{"name":"express-rate-limit","total_count":1,"children":[]},{"name":"express-validator","total_count":1,"children":[]},{"name":"helmet","total_count":1,"children":[]},{"name":"jsonwebtoken","total_count":1,"children":[]},{"name":"keywords","total_count":1,"children":[]},{"name":"license","total_count":1,"children":[]},{"name":"main","total_count":1,"children":[]},{"name":"mongoose","total_count":1,"children":[]},{"name":"morgan","total_count":1,"children":[]},{"name":"name","total_count":1,"children":[]},{"name":"nodemon","total_count":1,"children":[]},{"name":"scripts","total_count":1,"children":[]},{"name":"start","total_count":1,"children":[]},{"name":"version","total_count":1,"children":[]}]},{"name":"routes","total_count":24,"children":[{"name":"admin.js","total_count":4,"children":[{"name":"router","total_count":1,"children":[]},{"name":"{\r\n  getStats,\r\n  getLeads,\r\n  updateLeadStatus,\r\n  updateLeadAssign,\r\n  getUsers,\r\n  getUserById,\r\n  listRewards,\r\n  createReward,\r\n  updateReward,\r\n  deleteReward,\r\n  getTransactions,\r\n  getRedemptions,\r\n  updateRedemptionStatus,\r\n  getCoinSettingsAdmin,\r\n  putCoinSettingsAdmin,\r\n  listAgents,\r\n  createAgent,\r\n  updateAgent,\r\n}","total_count":1,"children":[]},{"name":"{ protect }","total_count":1,"children":[]},{"name":"{ requireAdmin }","total_count":1,"children":[]}]},{"name":"auth.js","total_count":3,"children":[{"name":"router","total_count":1,"children":[]},{"name":"{ protect }","total_count":1,"children":[]},{"name":"{ sendOTP, verifyOTP, applyReferral, adminLogin }","total_count":1,"children":[]}]},{"name":"lead.js","total_count":3,"children":[{"name":"router","total_count":1,"children":[]},{"name":"{ createLead, getMyLeads, rescheduleLead, cancelLead }","total_count":1,"children":[]},{"name":"{ protect }","total_count":1,"children":[]}]},{"name":"referral.js","total_count":3,"children":[{"name":"router","total_count":1,"children":[]},{"name":"{ getReferralStats }","total_count":1,"children":[]},{"name":"{ protect }","total_count":1,"children":[]}]},{"name":"rewards.js","total_count":3,"children":[{"name":"Reward","total_count":1,"children":[]},{"name":"router","total_count":1,"children":[]},{"name":"{ protect }","total_count":1,"children":[]}]},{"name":"user.js","total_count":3,"children":[{"name":"router","total_count":1,"children":[]},{"name":"{ getDashboard, getProfile, updateProfile, updatePushToken }","total_count":1,"children":[]},{"name":"{ protect }","total_count":1,"children":[]}]},{"name":"videos.js","total_count":2,"children":[{"name":"router","total_count":1,"children":[]},{"name":"{ getVideos }","total_count":1,"children":[]}]},{"name":"wallet.js","total_count":3,"children":[{"name":"router","total_count":1,"children":[]},{"name":"{ getBalance, getTransactions, redeemCoins }","total_count":1,"children":[]},{"name":"{ protect }","total_count":1,"children":[]}]}]},{"name":"server.js","total_count":19,"children":[{"name":"app","total_count":1,"children":[]},{"name":"connectDB","total_count":1,"children":[]},{"name":"cors","total_count":1,"children":[]},{"name":"express","total_count":1,"children":[]},{"name":"getLanIPv4()","total_count":1,"children":[]},{"name":"healthPayload()","total_count":1,"children":[]},{"name":"helmet","total_count":1,"children":[]},{"name":"limiter","total_count":1,"children":[]},{"name":"migrateLeadStatuses","total_count":1,"children":[]},{"name":"morgan","total_count":1,"children":[]},{"name":"os","total_count":1,"children":[]},{"name":"otpLimiter","total_count":1,"children":[]},{"name":"rateLimit","total_count":1,"children":[]},{"name":"seedCoinSettings","total_count":1,"children":[]},{"name":"seedRewards","total_count":1,"children":[]},{"name":"start()","total_count":1,"children":[]},{"name":"{ buildCorsOptions }","total_count":1,"children":[]},{"name":"{ errorHandler }","total_count":1,"children":[]},{"name":"{ loadEnv }","total_count":1,"children":[]}]},{"name":"utils","total_count":17,"children":[{"name":"generateCode.js","total_count":1,"children":[{"name":"generateReferralCode()","total_count":1,"children":[]}]},{"name":"getCoinSettings.js","total_count":3,"children":[{"name":"AppSettings","total_count":1,"children":[]},{"name":"DEFAULTS","total_count":1,"children":[]},{"name":"getCoinSettings()","total_count":1,"children":[]}]},{"name":"migrateLeadStatuses.js","total_count":2,"children":[{"name":"Lead","total_count":1,"children":[]},{"name":"migrateLeadStatuses()","total_count":1,"children":[]}]},{"name":"seedCoinSettings.js","total_count":3,"children":[{"name":"AppSettings","total_count":1,"children":[]},{"name":"seedCoinSettings()","total_count":1,"children":[]},{"name":"{ DEFAULTS }","total_count":1,"children":[]}]},{"name":"seedRewards.js","total_count":3,"children":[{"name":"DEFAULT_REWARDS","total_count":1,"children":[]},{"name":"Reward","total_count":1,"children":[]},{"name":"seedRewards()","total_count":1,"children":[]}]},{"name":"sendOTP.js","total_count":5,"children":[{"name":"generateOTP()","total_count":1,"children":[]},{"name":"otpStore","total_count":1,"children":[]},{"name":"sendOTPViaSMS()","total_count":1,"children":[]},{"name":"storeOTP()","total_count":1,"children":[]},{"name":"verifyOTP()","total_count":1,"children":[]}]}]}]},{"name":"greenpad-admin","total_count":181,"children":[{"name":".eslintrc.json","total_count":1,"children":[{"name":"extends","total_count":1,"children":[]}]},{"name":"AGENTS.md","total_count":2,"children":[{"name":"AGENTS.md","total_count":1,"children":[]},{"name":"This is NOT the Next.js you know","total_count":1,"children":[]}]},{"name":"app","total_count":34,"children":[{"name":"(admin)","total_count":27,"children":[{"name":"agents","total_count":3,"children":[{"name":"page.tsx","total_count":3,"children":[{"name":"Agent","total_count":1,"children":[]},{"name":"AgentsPage()","total_count":1,"children":[]},{"name":"emptyForm","total_count":1,"children":[]}]}]},{"name":"dashboard","total_count":3,"children":[{"name":"page.tsx","total_count":3,"children":[{"name":"DashboardPage()","total_count":1,"children":[]},{"name":"StatsData","total_count":1,"children":[]},{"name":"StatSkeleton()","total_count":1,"children":[]}]}]},{"name":"layout.tsx","total_count":1,"children":[{"name":"AdminLayout()","total_count":1,"children":[]}]},{"name":"leads","total_count":2,"children":[{"name":"page.tsx","total_count":2,"children":[{"name":"LeadsPage()","total_count":1,"children":[]},{"name":"LeadsQueryData","total_count":1,"children":[]}]}]},{"name":"redemptions","total_count":4,"children":[{"name":"page.tsx","total_count":4,"children":[{"name":"RedemptionRow","total_count":1,"children":[]},{"name":"RedemptionsPage()","total_count":1,"children":[]},{"name":"RewardMeta","total_count":1,"children":[]},{"name":"Tab","total_count":1,"children":[]}]}]},{"name":"rewards","total_count":4,"children":[{"name":"page.tsx","total_count":4,"children":[{"name":"FormValues","total_count":1,"children":[]},{"name":"Reward","total_count":1,"children":[]},{"name":"RewardsPage()","total_count":1,"children":[]},{"name":"schema","total_count":1,"children":[]}]}]},{"name":"settings","total_count":3,"children":[{"name":"page.tsx","total_count":3,"children":[{"name":"CoinSettings","total_count":1,"children":[]},{"name":"FIELDS","total_count":1,"children":[]},{"name":"SettingsPage()","total_count":1,"children":[]}]}]},{"name":"transactions","total_count":3,"children":[{"name":"page.tsx","total_count":3,"children":[{"name":"TransactionsPage()","total_count":1,"children":[]},{"name":"TxRow","total_count":1,"children":[]},{"name":"typeBadge()","total_count":1,"children":[]}]}]},{"name":"users","total_count":4,"children":[{"name":"page.tsx","total_count":4,"children":[{"name":"LeadRow","total_count":1,"children":[]},{"name":"Tx","total_count":1,"children":[]},{"name":"UserRow","total_count":1,"children":[]},{"name":"UsersPage()","total_count":1,"children":[]}]}]}]},{"name":"layout.tsx","total_count":4,"children":[{"name":"geistMono","total_count":1,"children":[]},{"name":"geistSans","total_count":1,"children":[]},{"name":"metadata","total_count":1,"children":[]},{"name":"RootLayout()","total_count":1,"children":[]}]},{"name":"login","total_count":1,"children":[{"name":"page.tsx","total_count":1,"children":[{"name":"LoginPage()","total_count":1,"children":[]}]}]},{"name":"page.tsx","total_count":1,"children":[{"name":"Home()","total_count":1,"children":[]}]},{"name":"providers.tsx","total_count":1,"children":[{"name":"Providers()","total_count":1,"children":[]}]}]},{"name":"CLAUDE.md","total_count":1,"children":[{"name":"CLAUDE.md","total_count":1,"children":[]}]},{"name":"next.config.mjs","total_count":1,"children":[{"name":"nextConfig","total_count":1,"children":[]}]},{"name":"package.json","total_count":36,"children":[{"name":"@hookform/resolvers","total_count":1,"children":[]},{"name":"@radix-ui/react-dialog","total_count":1,"children":[]},{"name":"@radix-ui/react-select","total_count":1,"children":[]},{"name":"@radix-ui/react-slot","total_count":1,"children":[]},{"name":"@radix-ui/react-tabs","total_count":1,"children":[]},{"name":"@tailwindcss/postcss","total_count":1,"children":[]},{"name":"@tanstack/react-query","total_count":1,"children":[]},{"name":"@types/node","total_count":1,"children":[]},{"name":"@types/react","total_count":1,"children":[]},{"name":"@types/react-dom","total_count":1,"children":[]},{"name":"axios","total_count":1,"children":[]},{"name":"build","total_count":1,"children":[]},{"name":"class-variance-authority","total_count":1,"children":[]},{"name":"clsx","total_count":1,"children":[]},{"name":"date-fns","total_count":1,"children":[]},{"name":"dependencies","total_count":1,"children":[]},{"name":"dev","total_count":1,"children":[]},{"name":"devDependencies","total_count":1,"children":[]},{"name":"eslint","total_count":1,"children":[]},{"name":"eslint-config-next","total_count":1,"children":[]},{"name":"lint","total_count":1,"children":[]},{"name":"lucide-react","total_count":1,"children":[]},{"name":"name","total_count":1,"children":[]},{"name":"next","total_count":1,"children":[]},{"name":"private","total_count":1,"children":[]},{"name":"react","total_count":1,"children":[]},{"name":"react-dom","total_count":1,"children":[]},{"name":"react-hook-form","total_count":1,"children":[]},{"name":"recharts","total_count":1,"children":[]},{"name":"scripts","total_count":1,"children":[]},{"name":"start","total_count":1,"children":[]},{"name":"tailwind-merge","total_count":1,"children":[]},{"name":"tailwindcss","total_count":1,"children":[]},{"name":"typescript","total_count":1,"children":[]},{"name":"version","total_count":1,"children":[]},{"name":"zod","total_count":1,"children":[]}]},{"name":"postcss.config.mjs","total_count":1,"children":[{"name":"config","total_count":1,"children":[]}]},{"name":"README.md","total_count":6,"children":[{"name":"code:bash (npm run dev)","total_count":1,"children":[]},{"name":"Deploy on Vercel","total_count":1,"children":[]},{"name":"Environment","total_count":1,"children":[]},{"name":"Getting Started","total_count":1,"children":[]},{"name":"Learn More","total_count":1,"children":[]},{"name":"README.md","total_count":1,"children":[]}]},{"name":"src","total_count":76,"children":[{"name":"components","total_count":59,"children":[{"name":"AdminShell.tsx","total_count":1,"children":[{"name":"AdminShell()","total_count":1,"children":[]}]},{"name":"crm","total_count":10,"children":[{"name":"LeadDetailsDrawer.tsx","total_count":9,"children":[{"name":"AgentOption","total_count":1,"children":[]},{"name":"emptyCrmState()","total_count":1,"children":[]},{"name":"isPopulatedUser()","total_count":1,"children":[]},{"name":"LeadCRMState","total_count":1,"children":[]},{"name":"LeadDetailsDrawer()","total_count":1,"children":[]},{"name":"LeadNote","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]},{"name":"seedTimeline()","total_count":1,"children":[]},{"name":"TimelineEntry","total_count":1,"children":[]}]},{"name":"StatusBadge.tsx","total_count":1,"children":[{"name":"StatusBadge()","total_count":1,"children":[]}]}]},{"name":"Header.tsx","total_count":2,"children":[{"name":"Header()","total_count":1,"children":[]},{"name":"titles","total_count":1,"children":[]}]},{"name":"ProtectedRoute.tsx","total_count":1,"children":[{"name":"ProtectedRoute()","total_count":1,"children":[]}]},{"name":"Sidebar.tsx","total_count":2,"children":[{"name":"nav","total_count":1,"children":[]},{"name":"Sidebar()","total_count":1,"children":[]}]},{"name":"ui","total_count":43,"children":[{"name":"button.tsx","total_count":3,"children":[{"name":"Button","total_count":1,"children":[]},{"name":"ButtonProps","total_count":1,"children":[]},{"name":"buttonVariants","total_count":1,"children":[]}]},{"name":"card.tsx","total_count":5,"children":[{"name":"Card()","total_count":1,"children":[]},{"name":"CardContent()","total_count":1,"children":[]},{"name":"CardDescription()","total_count":1,"children":[]},{"name":"CardHeader()","total_count":1,"children":[]},{"name":"CardTitle()","total_count":1,"children":[]}]},{"name":"dialog.tsx","total_count":4,"children":[{"name":"DialogContent","total_count":1,"children":[]},{"name":"DialogHeader()","total_count":1,"children":[]},{"name":"DialogOverlay","total_count":1,"children":[]},{"name":"DialogTitle()","total_count":1,"children":[]}]},{"name":"drawer.tsx","total_count":8,"children":[{"name":"DrawerBody()","total_count":1,"children":[]},{"name":"DrawerContent","total_count":1,"children":[]},{"name":"DrawerContentProps","total_count":1,"children":[]},{"name":"DrawerDescription()","total_count":1,"children":[]},{"name":"DrawerFooter()","total_count":1,"children":[]},{"name":"DrawerHeader()","total_count":1,"children":[]},{"name":"DrawerOverlay","total_count":1,"children":[]},{"name":"DrawerTitle()","total_count":1,"children":[]}]},{"name":"input.tsx","total_count":1,"children":[{"name":"Input","total_count":1,"children":[]}]},{"name":"label.tsx","total_count":1,"children":[{"name":"Label()","total_count":1,"children":[]}]},{"name":"select.tsx","total_count":5,"children":[{"name":"SelectContent","total_count":1,"children":[]},{"name":"SelectItem","total_count":1,"children":[]},{"name":"SelectScrollDownButton","total_count":1,"children":[]},{"name":"SelectScrollUpButton","total_count":1,"children":[]},{"name":"SelectTrigger","total_count":1,"children":[]}]},{"name":"table.tsx","total_count":6,"children":[{"name":"Table()","total_count":1,"children":[]},{"name":"TableBody()","total_count":1,"children":[]},{"name":"TableCell()","total_count":1,"children":[]},{"name":"TableHead()","total_count":1,"children":[]},{"name":"TableHeader()","total_count":1,"children":[]},{"name":"TableRow()","total_count":1,"children":[]}]},{"name":"tabs.tsx","total_count":3,"children":[{"name":"TabsContent","total_count":1,"children":[]},{"name":"TabsList","total_count":1,"children":[]},{"name":"TabsTrigger","total_count":1,"children":[]}]},{"name":"textarea.tsx","total_count":1,"children":[{"name":"Textarea","total_count":1,"children":[]}]},{"name":"toast.tsx","total_count":6,"children":[{"name":"ToastContext","total_count":1,"children":[]},{"name":"ToastContextValue","total_count":1,"children":[]},{"name":"ToastItem","total_count":1,"children":[]},{"name":"ToastProvider()","total_count":1,"children":[]},{"name":"ToastVariant","total_count":1,"children":[]},{"name":"useToast()","total_count":1,"children":[]}]}]}]},{"name":"lib","total_count":14,"children":[{"name":"api.ts","total_count":3,"children":[{"name":"api","total_count":1,"children":[]},{"name":"getApiBaseUrl()","total_count":1,"children":[]},{"name":"token","total_count":1,"children":[]}]},{"name":"lead-status.ts","total_count":7,"children":[{"name":"adminStatusLabel()","total_count":1,"children":[]},{"name":"LEAD_STATUSES","total_count":1,"children":[]},{"name":"LeadStatus","total_count":1,"children":[]},{"name":"LEGACY_LOST","total_count":1,"children":[]},{"name":"normalizeLeadStatusForUi()","total_count":1,"children":[]},{"name":"SALES_FUNNEL","total_count":1,"children":[]},{"name":"statusBadgeClass()","total_count":1,"children":[]}]},{"name":"redemption-labels.ts","total_count":2,"children":[{"name":"fulfillmentBadgeClass()","total_count":1,"children":[]},{"name":"fulfillmentLabel()","total_count":1,"children":[]}]},{"name":"utils.ts","total_count":2,"children":[{"name":"cn()","total_count":1,"children":[]},{"name":"downloadCsv()","total_count":1,"children":[]}]}]},{"name":"types","total_count":3,"children":[{"name":"lead.ts","total_count":3,"children":[{"name":"LeadAgentRef","total_count":1,"children":[]},{"name":"LeadRow","total_count":1,"children":[]},{"name":"LeadUserRef","total_count":1,"children":[]}]}]}]},{"name":"tsconfig.json","total_count":19,"children":[{"name":"@/*","total_count":1,"children":[]},{"name":"allowJs","total_count":1,"children":[]},{"name":"compilerOptions","total_count":1,"children":[]},{"name":"esModuleInterop","total_count":1,"children":[]},{"name":"exclude","total_count":1,"children":[]},{"name":"include","total_count":1,"children":[]},{"name":"incremental","total_count":1,"children":[]},{"name":"isolatedModules","total_count":1,"children":[]},{"name":"jsx","total_count":1,"children":[]},{"name":"lib","total_count":1,"children":[]},{"name":"module","total_count":1,"children":[]},{"name":"moduleResolution","total_count":1,"children":[]},{"name":"noEmit","total_count":1,"children":[]},{"name":"paths","total_count":1,"children":[]},{"name":"plugins","total_count":1,"children":[]},{"name":"resolveJsonModule","total_count":1,"children":[]},{"name":"skipLibCheck","total_count":1,"children":[]},{"name":"strict","total_count":1,"children":[]},{"name":"target","total_count":1,"children":[]}]},{"name":"vercel.json","total_count":3,"children":[{"name":"buildCommand","total_count":1,"children":[]},{"name":"framework","total_count":1,"children":[]},{"name":"installCommand","total_count":1,"children":[]}]},{"name":"next-env.d.ts","total_count":1,"children":[]}]},{"name":"mobile-app","total_count":362,"children":[{"name":"app.json","total_count":37,"children":[{"name":"adaptiveIcon","total_count":1,"children":[]},{"name":"android","total_count":1,"children":[]},{"name":"apiBaseUrl","total_count":1,"children":[]},{"name":"backgroundColor","total_count":1,"children":[]},{"name":"backgroundColor","total_count":1,"children":[]},{"name":"bundleIdentifier","total_count":1,"children":[]},{"name":"eas","total_count":1,"children":[]},{"name":"edgeToEdgeEnabled","total_count":1,"children":[]},{"name":"expo","total_count":1,"children":[]},{"name":"extra","total_count":1,"children":[]},{"name":"favicon","total_count":1,"children":[]},{"name":"foregroundImage","total_count":1,"children":[]},{"name":"icon","total_count":1,"children":[]},{"name":"image","total_count":1,"children":[]},{"name":"infoPlist","total_count":1,"children":[]},{"name":"ios","total_count":1,"children":[]},{"name":"name","total_count":1,"children":[]},{"name":"NSAllowsLocalNetworking","total_count":1,"children":[]},{"name":"NSAppTransportSecurity","total_count":1,"children":[]},{"name":"NSCameraUsageDescription","total_count":1,"children":[]},{"name":"NSPhotoLibraryUsageDescription","total_count":1,"children":[]},{"name":"orientation","total_count":1,"children":[]},{"name":"owner","total_count":1,"children":[]},{"name":"package","total_count":1,"children":[]},{"name":"permissions","total_count":1,"children":[]},{"name":"plugins","total_count":1,"children":[]},{"name":"predictiveBackGestureEnabled","total_count":1,"children":[]},{"name":"projectId","total_count":1,"children":[]},{"name":"resizeMode","total_count":1,"children":[]},{"name":"slug","total_count":1,"children":[]},{"name":"softwareKeyboardMode","total_count":1,"children":[]},{"name":"splash","total_count":1,"children":[]},{"name":"supportsTablet","total_count":1,"children":[]},{"name":"userInterfaceStyle","total_count":1,"children":[]},{"name":"usesCleartextTraffic","total_count":1,"children":[]},{"name":"version","total_count":1,"children":[]},{"name":"web","total_count":1,"children":[]}]},{"name":"App.tsx","total_count":1,"children":[{"name":"App()","total_count":1,"children":[]}]},{"name":"eas.json","total_count":14,"children":[{"name":"android","total_count":1,"children":[]},{"name":"android","total_count":1,"children":[]},{"name":"build","total_count":1,"children":[]},{"name":"buildType","total_count":1,"children":[]},{"name":"cli","total_count":1,"children":[]},{"name":"development","total_count":1,"children":[]},{"name":"developmentClient","total_count":1,"children":[]},{"name":"distribution","total_count":1,"children":[]},{"name":"distribution","total_count":1,"children":[]},{"name":"preview","total_count":1,"children":[]},{"name":"production","total_count":1,"children":[]},{"name":"production","total_count":1,"children":[]},{"name":"submit","total_count":1,"children":[]},{"name":"version","total_count":1,"children":[]}]},{"name":"package.json","total_count":55,"children":[{"name":"@expo-google-fonts/be-vietnam-pro","total_count":1,"children":[]},{"name":"@expo-google-fonts/epilogue","total_count":1,"children":[]},{"name":"@expo-google-fonts/space-grotesk","total_count":1,"children":[]},{"name":"@expo/vector-icons","total_count":1,"children":[]},{"name":"@hookform/resolvers","total_count":1,"children":[]},{"name":"@react-native-async-storage/async-storage","total_count":1,"children":[]},{"name":"@react-native-community/datetimepicker","total_count":1,"children":[]},{"name":"@react-native-community/netinfo","total_count":1,"children":[]},{"name":"@react-native-community/slider","total_count":1,"children":[]},{"name":"@react-native-masked-view/masked-view","total_count":1,"children":[]},{"name":"@react-navigation/bottom-tabs","total_count":1,"children":[]},{"name":"@react-navigation/native","total_count":1,"children":[]},{"name":"@react-navigation/native-stack","total_count":1,"children":[]},{"name":"@types/react","total_count":1,"children":[]},{"name":"android","total_count":1,"children":[]},{"name":"axios","total_count":1,"children":[]},{"name":"babel-preset-expo","total_count":1,"children":[]},{"name":"dependencies","total_count":1,"children":[]},{"name":"devDependencies","total_count":1,"children":[]},{"name":"expo","total_count":1,"children":[]},{"name":"expo-av","total_count":1,"children":[]},{"name":"expo-blur","total_count":1,"children":[]},{"name":"expo-clipboard","total_count":1,"children":[]},{"name":"expo-constants","total_count":1,"children":[]},{"name":"expo-device","total_count":1,"children":[]},{"name":"expo-font","total_count":1,"children":[]},{"name":"expo-haptics","total_count":1,"children":[]},{"name":"expo-linear-gradient","total_count":1,"children":[]},{"name":"expo-notifications","total_count":1,"children":[]},{"name":"expo-secure-store","total_count":1,"children":[]},{"name":"expo-sharing","total_count":1,"children":[]},{"name":"expo-status-bar","total_count":1,"children":[]},{"name":"ios","total_count":1,"children":[]},{"name":"main","total_count":1,"children":[]},{"name":"name","total_count":1,"children":[]},{"name":"private","total_count":1,"children":[]},{"name":"react","total_count":1,"children":[]},{"name":"react-dom","total_count":1,"children":[]},{"name":"react-hook-form","total_count":1,"children":[]},{"name":"react-native","total_count":1,"children":[]},{"name":"react-native-gesture-handler","total_count":1,"children":[]},{"name":"react-native-reanimated","total_count":1,"children":[]},{"name":"react-native-safe-area-context","total_count":1,"children":[]},{"name":"react-native-screens","total_count":1,"children":[]},{"name":"react-native-svg","total_count":1,"children":[]},{"name":"react-native-toast-message","total_count":1,"children":[]},{"name":"react-native-web","total_count":1,"children":[]},{"name":"react-native-worklets","total_count":1,"children":[]},{"name":"scripts","total_count":1,"children":[]},{"name":"start","total_count":1,"children":[]},{"name":"typescript","total_count":1,"children":[]},{"name":"version","total_count":1,"children":[]},{"name":"web","total_count":1,"children":[]},{"name":"zod","total_count":1,"children":[]},{"name":"zustand","total_count":1,"children":[]}]},{"name":"README.md","total_count":5,"children":[{"name":"code:bash (cd mobile-app)","total_count":1,"children":[]},{"name":"GreenPad Mobile (Expo)","total_count":1,"children":[]},{"name":"README.md","total_count":1,"children":[]},{"name":"Scripts","total_count":1,"children":[]},{"name":"Setup","total_count":1,"children":[]}]},{"name":"src","total_count":245,"children":[{"name":"assets","total_count":1,"children":[{"name":"gvLogoSvgXml.ts","total_count":1,"children":[]}]},{"name":"components","total_count":34,"children":[{"name":"AnimatedCard.tsx","total_count":2,"children":[{"name":"AnimatedCard()","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]}]},{"name":"AnimatedCoinCount.tsx","total_count":3,"children":[{"name":"AnimatedCoinCount()","total_count":1,"children":[]},{"name":"AnimatedTextComponent","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]}]},{"name":"ErrorBoundary.tsx","total_count":7,"children":[{"name":".componentDidCatch()","total_count":1,"children":[]},{"name":".getDerivedStateFromError()","total_count":1,"children":[]},{"name":".render()","total_count":1,"children":[]},{"name":"ErrorBoundary","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]},{"name":"State","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"GvLogo.tsx","total_count":2,"children":[{"name":"GvLogo()","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]}]},{"name":"OfflineBanner.tsx","total_count":2,"children":[{"name":"OfflineBanner()","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"SuccessCheckmark.tsx","total_count":3,"children":[{"name":"Props","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"SuccessCheckmark()","total_count":1,"children":[]}]},{"name":"ui","total_count":10,"children":[{"name":"Button.tsx","total_count":3,"children":[{"name":"Button()","total_count":1,"children":[]},{"name":"ButtonProps","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"ErrorRetry.tsx","total_count":3,"children":[{"name":"ErrorRetry()","total_count":1,"children":[]},{"name":"ErrorRetryProps","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"LoadingOverlay.tsx","total_count":3,"children":[{"name":"LoadingOverlay()","total_count":1,"children":[]},{"name":"LoadingOverlayProps","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"VideoItem.tsx","total_count":4,"children":[{"name":"styles","total_count":1,"children":[]},{"name":"VideoItem()","total_count":1,"children":[]},{"name":"VideoItemProps","total_count":1,"children":[]},{"name":"{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"constants","total_count":11,"children":[{"name":"index.ts","total_count":7,"children":[{"name":"API_CONFIG","total_count":1,"children":[]},{"name":"hostFromExpoDev()","total_count":1,"children":[]},{"name":"isPrivateIpv4()","total_count":1,"children":[]},{"name":"normalizeApiBase()","total_count":1,"children":[]},{"name":"OTP_CONFIG","total_count":1,"children":[]},{"name":"resolveApiBaseUrl()","total_count":1,"children":[]},{"name":"STORAGE_KEYS","total_count":1,"children":[]}]},{"name":"theme.ts","total_count":4,"children":[{"name":"COLORS","total_count":1,"children":[]},{"name":"FONTS","total_count":1,"children":[]},{"name":"SHADOWS","total_count":1,"children":[]},{"name":"SIZES","total_count":1,"children":[]}]}]},{"name":"navigation","total_count":16,"children":[{"name":"AuthNavigator.tsx","total_count":2,"children":[{"name":"AuthNavigator()","total_count":1,"children":[]},{"name":"Stack","total_count":1,"children":[]}]},{"name":"MainNavigator.tsx","total_count":2,"children":[{"name":"MainNavigator()","total_count":1,"children":[]},{"name":"Stack","total_count":1,"children":[]}]},{"name":"MainTabNavigator.tsx","total_count":5,"children":[{"name":"AnimatedTabIcon()","total_count":1,"children":[]},{"name":"getTabIcon()","total_count":1,"children":[]},{"name":"IconName","total_count":1,"children":[]},{"name":"MainTabNavigator()","total_count":1,"children":[]},{"name":"Tab","total_count":1,"children":[]}]},{"name":"RootNavigator.tsx","total_count":2,"children":[{"name":"RootNavigator()","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"types.ts","total_count":4,"children":[{"name":"AuthStackParamList","total_count":1,"children":[]},{"name":"MainStackParamList","total_count":1,"children":[]},{"name":"MainTabParamList","total_count":1,"children":[]},{"name":"RootParamList","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"screens","total_count":138,"children":[{"name":"auth","total_count":28,"children":[{"name":"LoginScreen.tsx","total_count":5,"children":[{"name":"AuthStackParamList","total_count":1,"children":[]},{"name":"LoginScreen()","total_count":1,"children":[]},{"name":"LoginScreenNavigationProp","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"OnboardingScreen.tsx","total_count":10,"children":[{"name":"Dot()","total_count":1,"children":[]},{"name":"DotProps","total_count":1,"children":[]},{"name":"OnboardingScreen()","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]},{"name":"Slide","total_count":1,"children":[]},{"name":"SlideItem()","total_count":1,"children":[]},{"name":"SlideItemProps","total_count":1,"children":[]},{"name":"SLIDES","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"{ width: SCREEN_WIDTH }","total_count":1,"children":[]}]},{"name":"OTPScreen.tsx","total_count":7,"children":[{"name":"AuthStackParamList","total_count":1,"children":[]},{"name":"digitsToOtpArray()","total_count":1,"children":[]},{"name":"OTPScreen()","total_count":1,"children":[]},{"name":"OTPScreenNavigationProp","total_count":1,"children":[]},{"name":"OTPScreenRouteProp","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"SplashScreen.tsx","total_count":5,"children":[{"name":"AuthStackParamList","total_count":1,"children":[]},{"name":"Props","total_count":1,"children":[]},{"name":"SplashScreen()","total_count":1,"children":[]},{"name":"SplashScreenNavigationProp","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"main","total_count":109,"children":[{"name":"BookSiteVisitScreen.tsx","total_count":20,"children":[{"name":"BookingFormValues","total_count":1,"children":[]},{"name":"BookSiteVisitScreen()","total_count":1,"children":[]},{"name":"buildBookingSchema()","total_count":1,"children":[]},{"name":"buildDefaultPhone()","total_count":1,"children":[]},{"name":"buildDefaultValues()","total_count":1,"children":[]},{"name":"formatDisplayDate()","total_count":1,"children":[]},{"name":"isDateAtLeastTomorrow()","total_count":1,"children":[]},{"name":"minSelectableDate()","total_count":1,"children":[]},{"name":"PROPERTY_OPTIONS","total_count":1,"children":[]},{"name":"PROPERTY_TYPE_MAP","total_count":1,"children":[]},{"name":"propertyTypeEnum","total_count":1,"children":[]},{"name":"startOfTomorrow()","total_count":1,"children":[]},{"name":"STEP_FIELDS","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"SuccessView()","total_count":1,"children":[]},{"name":"SummaryRow()","total_count":1,"children":[]},{"name":"TIME_SLOT_MAP","total_count":1,"children":[]},{"name":"TIME_SLOTS","total_count":1,"children":[]},{"name":"timeSlotEnum","total_count":1,"children":[]},{"name":"useScrollFieldIntoView()","total_count":1,"children":[]}]},{"name":"HomeScreen.tsx","total_count":13,"children":[{"name":"ActionCard()","total_count":1,"children":[]},{"name":"ActionItem","total_count":1,"children":[]},{"name":"ACTIVE_LEAD_STATUSES","total_count":1,"children":[]},{"name":"AnimatedTouchable","total_count":1,"children":[]},{"name":"CoinWalletCard()","total_count":1,"children":[]},{"name":"DashboardData","total_count":1,"children":[]},{"name":"HomeScreen()","total_count":1,"children":[]},{"name":"SkeletonBox()","total_count":1,"children":[]},{"name":"SkeletonLoader()","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"TrustBadge()","total_count":1,"children":[]},{"name":"VideoCard()","total_count":1,"children":[]},{"name":"{ width: SCREEN_WIDTH }","total_count":1,"children":[]}]},{"name":"MyLeadsScreen.tsx","total_count":16,"children":[{"name":"canModify()","total_count":1,"children":[]},{"name":"formatDate()","total_count":1,"children":[]},{"name":"LeadCard","total_count":1,"children":[]},{"name":"LeadCardProps","total_count":1,"children":[]},{"name":"minSelectableDate()","total_count":1,"children":[]},{"name":"MyLeadsScreen()","total_count":1,"children":[]},{"name":"normalizeLeadStatus()","total_count":1,"children":[]},{"name":"PIPELINE","total_count":1,"children":[]},{"name":"PIPELINE_LABEL","total_count":1,"children":[]},{"name":"ProgressTracker","total_count":1,"children":[]},{"name":"PROPERTY_EMOJI","total_count":1,"children":[]},{"name":"ptStyles","total_count":1,"children":[]},{"name":"STATUS_META","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"TIME_SLOTS","total_count":1,"children":[]},{"name":"tomorrowDate()","total_count":1,"children":[]}]},{"name":"NotificationsScreen.tsx","total_count":5,"children":[{"name":"formatTime()","total_count":1,"children":[]},{"name":"ICON_MAP","total_count":1,"children":[]},{"name":"NotificationItem","total_count":1,"children":[]},{"name":"NotificationsScreen()","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"ProfileScreen.tsx","total_count":4,"children":[{"name":"InfoRow()","total_count":1,"children":[]},{"name":"ProfileData","total_count":1,"children":[]},{"name":"ProfileScreen()","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"ReferScreen.tsx","total_count":20,"children":[{"name":"AnimatedTouchable","total_count":1,"children":[]},{"name":"APP_INSTALL_STEPS","total_count":1,"children":[]},{"name":"EmptyReferrals","total_count":1,"children":[]},{"name":"formatDate()","total_count":1,"children":[]},{"name":"getShareMessage()","total_count":1,"children":[]},{"name":"getStatusColor()","total_count":1,"children":[]},{"name":"ReferActivePath","total_count":1,"children":[]},{"name":"ReferralCodeCard","total_count":1,"children":[]},{"name":"ReferralCodeCardProps","total_count":1,"children":[]},{"name":"ReferralItemUI","total_count":1,"children":[]},{"name":"ReferralItemUIProps","total_count":1,"children":[]},{"name":"ReferralStatus","total_count":1,"children":[]},{"name":"ReferScreen()","total_count":1,"children":[]},{"name":"RewardStep","total_count":1,"children":[]},{"name":"ShareButton","total_count":1,"children":[]},{"name":"ShareButtonProps","total_count":1,"children":[]},{"name":"SITE_VISIT_REFERRAL_STEPS","total_count":1,"children":[]},{"name":"StepItem","total_count":1,"children":[]},{"name":"StepItemProps","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]}]},{"name":"RewardsStoreScreen.tsx","total_count":11,"children":[{"name":"AnimatedTouchable","total_count":1,"children":[]},{"name":"CARD_GRADIENTS","total_count":1,"children":[]},{"name":"CoinHeader","total_count":1,"children":[]},{"name":"ConfirmModal","total_count":1,"children":[]},{"name":"ConfirmModalProps","total_count":1,"children":[]},{"name":"EmptyState","total_count":1,"children":[]},{"name":"RewardCard","total_count":1,"children":[]},{"name":"RewardCardProps","total_count":1,"children":[]},{"name":"RewardsStoreScreen()","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"{ width: SCREEN_WIDTH }","total_count":1,"children":[]}]},{"name":"VideoReelScreen.tsx","total_count":5,"children":[{"name":"NavigationProp","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"VideoReelRouteProp","total_count":1,"children":[]},{"name":"VideoReelScreen()","total_count":1,"children":[]},{"name":"{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }","total_count":1,"children":[]}]},{"name":"WalletScreen.tsx","total_count":14,"children":[{"name":"CoinDisplay","total_count":1,"children":[]},{"name":"CoinDisplayProps","total_count":1,"children":[]},{"name":"EmptyState","total_count":1,"children":[]},{"name":"formatDate()","total_count":1,"children":[]},{"name":"formatRelativeDate()","total_count":1,"children":[]},{"name":"styles","total_count":1,"children":[]},{"name":"TabBar","total_count":1,"children":[]},{"name":"TabBarProps","total_count":1,"children":[]},{"name":"TABS","total_count":1,"children":[]},{"name":"TabType","total_count":1,"children":[]},{"name":"TransactionItem","total_count":1,"children":[]},{"name":"TransactionItemProps","total_count":1,"children":[]},{"name":"WalletScreen()","total_count":1,"children":[]},{"name":"{ width: SCREEN_WIDTH }","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"services","total_count":36,"children":[{"name":"api.ts","total_count":5,"children":[{"name":"api","total_count":1,"children":[]},{"name":"apiWithRetry()","total_count":1,"children":[]},{"name":"getErrorMessage()","total_count":1,"children":[]},{"name":"RetryConfig","total_count":1,"children":[]},{"name":"setLogoutCallback()","total_count":1,"children":[]}]},{"name":"auth.service.ts","total_count":5,"children":[{"name":"ApplyReferralResponse","total_count":1,"children":[]},{"name":"authService","total_count":1,"children":[]},{"name":"SendOTPResponse","total_count":1,"children":[]},{"name":"UserData","total_count":1,"children":[]},{"name":"VerifyOTPResponse","total_count":1,"children":[]}]},{"name":"lead.service.ts","total_count":5,"children":[{"name":"CreateLeadPayload","total_count":1,"children":[]},{"name":"CreateLeadResponse","total_count":1,"children":[]},{"name":"Lead","total_count":1,"children":[]},{"name":"leadService","total_count":1,"children":[]},{"name":"LeadType","total_count":1,"children":[]}]},{"name":"notification.service.ts","total_count":6,"children":[{"name":"addNotificationReceivedListener()","total_count":1,"children":[]},{"name":"addNotificationResponseListener()","total_count":1,"children":[]},{"name":"notificationService","total_count":1,"children":[]},{"name":"registerForPushNotifications()","total_count":1,"children":[]},{"name":"savePushToken()","total_count":1,"children":[]},{"name":"scheduleLocalNotification()","total_count":1,"children":[]}]},{"name":"referral.service.ts","total_count":2,"children":[{"name":"referralService","total_count":1,"children":[]},{"name":"ReferralStats","total_count":1,"children":[]}]},{"name":"reward.service.ts","total_count":2,"children":[{"name":"Reward","total_count":1,"children":[]},{"name":"rewardService","total_count":1,"children":[]}]},{"name":"user.service.ts","total_count":3,"children":[{"name":"DashboardData","total_count":1,"children":[]},{"name":"ProfileData","total_count":1,"children":[]},{"name":"userService","total_count":1,"children":[]}]},{"name":"video.service.ts","total_count":2,"children":[{"name":"Video","total_count":1,"children":[]},{"name":"videoService","total_count":1,"children":[]}]},{"name":"wallet.service.ts","total_count":5,"children":[{"name":"BalanceData","total_count":1,"children":[]},{"name":"RedeemResponse","total_count":1,"children":[]},{"name":"Transaction","total_count":1,"children":[]},{"name":"TransactionsResponse","total_count":1,"children":[]},{"name":"walletService","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"stores","total_count":9,"children":[{"name":"authStore.ts","total_count":5,"children":[{"name":"AuthActions","total_count":1,"children":[]},{"name":"AuthState","total_count":1,"children":[]},{"name":"AuthStore","total_count":1,"children":[]},{"name":"useAuthStore","total_count":1,"children":[]},{"name":"UserData","total_count":1,"children":[]}]},{"name":"notificationStore.ts","total_count":3,"children":[{"name":"AppNotification","total_count":1,"children":[]},{"name":"NotificationState","total_count":1,"children":[]},{"name":"useNotificationStore","total_count":1,"children":[]}]},{"name":"index.ts","total_count":1,"children":[]}]}]},{"name":"tsconfig.json","total_count":3,"children":[{"name":"compilerOptions","total_count":1,"children":[]},{"name":"extends","total_count":1,"children":[]},{"name":"strict","total_count":1,"children":[]}]},{"name":"babel.config.js","total_count":1,"children":[]},{"name":"index.ts","total_count":1,"children":[]}]},{"name":"package.json","total_count":14,"children":[{"name":"admin","total_count":1,"children":[]},{"name":"admin:build","total_count":1,"children":[]},{"name":"api","total_count":1,"children":[]},{"name":"api:start","total_count":1,"children":[]},{"name":"dependencies","total_count":1,"children":[]},{"name":"description","total_count":1,"children":[]},{"name":"greenpad-admin","total_count":1,"children":[]},{"name":"mobile","total_count":1,"children":[]},{"name":"mobile:android","total_count":1,"children":[]},{"name":"mobile:ios","total_count":1,"children":[]},{"name":"mobile:web","total_count":1,"children":[]},{"name":"name","total_count":1,"children":[]},{"name":"private","total_count":1,"children":[]},{"name":"scripts","total_count":1,"children":[]}]},{"name":"README.md","total_count":10,"children":[{"name":"Admin (`greenpad-admin/`)","total_count":1,"children":[]},{"name":"Backend (`backend/`)","total_count":1,"children":[]},{"name":"code:block1 (greenpad-app-01/)","total_count":1,"children":[]},{"name":"GreenPad","total_count":1,"children":[]},{"name":"Install & run","total_count":1,"children":[]},{"name":"Layout","total_count":1,"children":[]},{"name":"Mobile app (`mobile-app/`)","total_count":1,"children":[]},{"name":"Prerequisites","total_count":1,"children":[]},{"name":"README.md","total_count":1,"children":[]},{"name":"Theme (mobile)","total_count":1,"children":[]}]}]};
+
+    function transformData(jsonData) {
+        // Helper function to recursively build the children structure
+        function processNode(node, parentL1StageName) {
+            let displayName = node.name;
+            // Append total_count if it exists and is not already in the name
+            if (node.total_count !== undefined) {
+                if (!/\(Total Count: \d+\)$/.test(displayName)) {
+                    displayName += ` (Total Count: ${node.total_count})`;
+                }
+            }
+
+            const newNode = { name: displayName };
+
+            if (parentL1StageName === "Root") {
+                 newNode.originalStageName = node.name;
+            } else {
+                newNode.originalStageName = parentL1StageName;
+            }
+
+            if (node.children && node.children.length > 0) {
+                const stageNameToPass = (parentL1StageName === "Root") ? node.name : parentL1StageName;
+                newNode.children = node.children.map(child => processNode(child, stageNameToPass));
+            }
+
+            return newNode;
+        }
+
+        let rootDisplayName = jsonData.name;
+        if (jsonData.total_count !== undefined && !/\(Total Count: \d+\)$/.test(rootDisplayName)) {
+            rootDisplayName += ` (Total Count: ${jsonData.total_count})`;
+        }
+
+        return {
+            name: rootDisplayName,
+            originalStageName: "Root",
+            children: (jsonData.children || []).map(child => processNode(child, "Root"))
+        };
+    }
+
+    const treeData = transformData(initialJsonData);
+
+    // Auto-populated phaseColors: every depth-1 child of the root gets
+    // a stable colour from a bigger palette so all top-level dirs are
+    // distinguishable.
+    const PALETTE = [
+      ["#3498DB","#2980B9","#AED6F1"], ["#2ECC71","#27AE60","#A9DFBF"],
+      ["#E74C3C","#C0392B","#F5B7B1"], ["#9B59B6","#8E44AD","#D7BDE2"],
+      ["#F39C12","#D68910","#FAD7A0"], ["#1ABC9C","#117864","#A2D9CE"],
+      ["#34495E","#1B2631","#ABB2B9"], ["#E67E22","#BA4A00","#F5CBA7"],
+      ["#16A085","#0E6655","#A2D9CE"], ["#D35400","#A04000","#EDBB99"],
+      ["#7F8C8D","#566573","#D5DBDB"], ["#C0392B","#7B241C","#F5B7B1"],
+      ["#2E86C1","#1B4F72","#A9CCE3"], ["#28B463","#196F3D","#A9DFBF"],
+      ["#AF7AC5","#6C3483","#D2B4DE"],
+    ];
+    const phaseColors = { "Root": { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+                          "Default": { fill: "#BDC3C7", stroke: "#95A5A6", collapsedFill: "#ECF0F1" } };
+    (initialJsonData.children || []).forEach((c, i) => {
+      const pal = PALETTE[i % PALETTE.length];
+      phaseColors[c.name] = { fill: pal[0], stroke: pal[1], collapsedFill: pal[2] };
+    });
+
+    const levelSpecificPalettes = {
+      0: { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+      2: { fill: "#6ab04c", stroke: "#508a38", collapsedFill: "#a3d391" },
+      3: { fill: "#f0932b", stroke: "#d0730f", collapsedFill: "#f6c07e" },
+      4: { fill: "#be2edd", stroke: "#a01cb3", collapsedFill: "#e08bf2" },
+      5: { fill: "#00a8ff", stroke: "#007ac1", collapsedFill: "#74d2ff" },
+      6: { fill: "#e55039", stroke: "#c23620", collapsedFill: "#f09a8d" },
+      default: { fill: "#747d8c", stroke: "#57606f", collapsedFill: "#a4b0be" }
+    };
+
+    const svgElement = d3.select("#tree-svg");
+    const initialSvgWidth = +svgElement.attr("width");
+    const initialSvgHeight = +svgElement.attr("height");
+    const margin = { top: 40, right: 120, bottom: 80, left: 450 };
+    let width = initialSvgWidth - margin.left - margin.right;
+    let height = initialSvgHeight - margin.top - margin.bottom;
+    const duration = 500;
+    let nodeCounter = 0;
+    const g = svgElement.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    const treemap = d3.tree().nodeSize([40, 0]);
+    let rootNode = d3.hierarchy(treeData, d => d.children);
+    rootNode.x0 = 0;
+    rootNode.y0 = 0;
+
+    if (rootNode.children) {
+      rootNode.children.forEach(d_child => {
+        if (d_child.children) { collapseBranch(d_child); }
+      });
+    }
+    updateTree(rootNode);
+
+    function collapseBranch(d) { if (d.children) { d._children = d.children; d._children.forEach(collapseBranch); d.children = null; } }
+    function expandBranch(d) { if (d._children) { d.children = d._children; d._children = null; } if (d.children) { d.children.forEach(expandBranch); } }
+    window.expandAll = () => { expandBranch(rootNode); updateTree(rootNode); };
+    window.collapseAll = () => { if (rootNode.children) { rootNode.children.forEach(collapseBranch); } updateTree(rootNode); };
+    window.resetView = () => { if (rootNode.children) { rootNode.children.forEach(d_child => { if (d_child.children || d_child._children) { collapseBranch(d_child); } }); } if (rootNode._children && !rootNode.children) { rootNode.children = rootNode._children; rootNode._children = null; } updateTree(rootNode); };
+
+    function updateTree(source) {
+      const treeLayoutData = treemap(rootNode);
+      let nodes = treeLayoutData.descendants();
+      let links = treeLayoutData.descendants().slice(1);
+
+      let minX = 0;
+      let maxX = 0;
+      if (nodes.length > 0) {
+        minX = d3.min(nodes, d => d.x);
+        maxX = d3.max(nodes, d => d.x);
+      }
+
+      let neededHeight = Math.max(initialSvgHeight, maxX - minX + margin.top + margin.bottom + 100);
+      svgElement.transition().duration(duration / 2).attr("height", neededHeight);
+      g.transition().duration(duration / 2).attr("transform", `translate(${margin.left},${margin.top - minX + 40})`);
+
+      nodes.forEach(d => { d.y = d.depth * 400; }); // Adjust horizontal separation if needed
+
+      const node = g.selectAll('g.node').data(nodes, d => d.id || (d.id = ++nodeCounter));
+      const nodeEnter = node.enter().append('g')
+        .attr('class', d => "node" + (d.children || d._children ? " node--internal" : " node--leaf") + (d._children ? " _children" : ""))
+        .attr('transform', d => `translate(${source.y0},${source.x0})`)
+        .on('click', (event, d) => { if (d.children) { d._children = d.children; d.children = null; } else if (d._children) { d.children = d._children; d._children = null; } updateTree(d); })
+        .style('cursor', d => (d.children || d._children) ? 'pointer' : 'default');
+
+      nodeEnter.append('circle').attr('r', 1e-6);
+
+      nodeEnter.append('text')
+        .attr('dy', '.35em')
+        .attr('x', d => d.children || d._children ? -14 : 14)
+        .attr('text-anchor', d => d.children || d._children ? 'end' : 'start')
+        .style("fill-opacity", 1e-6)
+        .call(wrapText, 380);
+
+      const nodeUpdate = nodeEnter.merge(node);
+      nodeUpdate.transition().duration(duration)
+        .attr('transform', d => `translate(${d.y},${d.x})`)
+        .attr('class', d => "node" + (d.children ? " node--internal" : " node--leaf") + (d._children ? " node--internal _children" : ""));
+
+      nodeUpdate.select('circle').attr('r', 8.5)
+        .style('fill', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            if (d._children) return palette.collapsedFill;
+            if (d.children) return palette.fill;
+            return "#fff";
+        })
+        .style('stroke', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            return palette.stroke;
+        });
+      nodeUpdate.select('text').style("fill-opacity", 1).call(wrapText, 380);
+
+      const nodeExit = node.exit().transition().duration(duration).attr('transform', d => `translate(${source.y},${source.x})`).remove();
+      nodeExit.select('circle').attr('r', 1e-6);
+      nodeExit.select('text').style('fill-opacity', 1e-6);
+
+      const link = g.selectAll('path.link').data(links, d => d.id);
+      const linkEnter = link.enter().insert('path', "g").attr('class', 'link').attr('d', d => { const o = { x: source.x0, y: source.y0 }; return diagonal(o, o); });
+
+      linkEnter.merge(link).transition().duration(duration).attr('d', d => diagonal(d, d.parent))
+        .style('stroke', d => {
+            const sourceNode = d.parent;
+            if (!sourceNode) return phaseColors.Default.stroke;
+            const l1AncestorName = sourceNode.data.originalStageName;
+            const colorPalette = phaseColors[l1AncestorName] || phaseColors.Default;
+            return colorPalette.stroke;
+        });
+      link.exit().transition().duration(duration).attr('d', d => { const o = { x: source.x, y: source.y }; return diagonal(o, o); }).remove();
+      nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+    }
+
+    function diagonal(s, d) { return `M ${s.y} ${s.x} C ${(s.y + d.y) / 2} ${s.x}, ${(s.y + d.y) / 2} ${d.x}, ${d.y} ${d.x}`; }
+
+    function wrapText(textElements, maxWidth) {
+        const textPartColors = {
+            name: '#343a40',
+            count: '#0056b3'
+        };
+        const countRegex = /(\s\(Total Count: \d+\))$/;
+
+        textElements.each(function () {
+            const textD3 = d3.select(this);
+            const originalNodeText = textD3.datum().data.name;
+            const x = parseFloat(textD3.attr("x") || 0);
+            const initialDy = textD3.attr("dy");
+            const textAnchor = textD3.attr("text-anchor");
+            const lineHeight = 1.1;
+
+            textD3.text(null);
+
+            let namePart = originalNodeText;
+            let countPartText = "";
+
+            const countMatch = originalNodeText.match(countRegex);
+            if (countMatch && originalNodeText.endsWith(countMatch[0])) {
+                namePart = originalNodeText.substring(0, originalNodeText.length - countMatch[0].length).trim();
+                countPartText = countMatch[0].trim();
+            }
+
+            const tokens = [];
+            namePart.split(/\s+/).filter(Boolean).forEach(word => {
+                tokens.push({ text: word, type: 'name' });
+            });
+            if (countPartText) {
+                tokens.push({ text: countPartText, type: 'count' });
+            }
+
+            if (tokens.length === 0 && originalNodeText) {
+                tokens.push({ text: originalNodeText, type: 'name' });
+            }
+
+            let currentTspan = textD3.append("tspan").attr("x", x).attr("dy", initialDy);
+            if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+
+            let lineTokens = [];
+
+            for (let i = 0; i < tokens.length; i++) {
+                const tokenObj = tokens[i];
+
+                lineTokens.push(tokenObj);
+                currentTspan.text(lineTokens.map(t => t.text).join(" "));
+
+                if (currentTspan.node().getComputedTextLength() > maxWidth && lineTokens.length > 1) {
+                    lineTokens.pop();
+
+                    currentTspan.text(null);
+                    lineTokens.forEach((prevToken, idx) => {
+                        currentTspan.append("tspan")
+                            .text((idx > 0 ? " " : "") + prevToken.text)
+                            .style("fill", textPartColors[prevToken.type] || textPartColors.name)
+                            .style("font-weight", prevToken.type === 'count' ? "bold" : "normal");
+                    });
+
+                    lineTokens = [tokenObj];
+                    currentTspan = textD3.append("tspan").attr("x", x).attr("dy", lineHeight + "em");
+                    if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+                }
+            }
+
+            currentTspan.text(null);
+            lineTokens.forEach((token, idx) => {
+                currentTspan.append("tspan")
+                    .text((idx > 0 ? " " : "") + token.text)
+                    .style("fill", textPartColors[token.type] || textPartColors.name)
+                    .style("font-weight", token.type === 'count' ? "bold" : "normal");
+            });
+
+            if (textD3.selectAll("tspan > tspan").empty() && textD3.select("tspan").text().length === 0 && originalNodeText) {
+                let t = textD3.select("tspan");
+                let displayText = originalNodeText;
+                t.text(displayText).style("fill", textPartColors.name);
+                if (t.node() && t.node().getComputedTextLength() > maxWidth && displayText.length > 20) {
+                    let estimatedChars = Math.floor(maxWidth / (t.node().getComputedTextLength()/displayText.length) );
+                    displayText = displayText.substring(0, Math.max(0, estimatedChars - 3)) + "...";
+                    t.text(displayText);
+                }
+            }
+        });
+    }
+  </script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import BookSiteVisitScreen from '../screens/main/BookSiteVisitScreen';
 import RewardsStoreScreen from '../screens/main/RewardsStoreScreen';
 import NotificationsScreen from '../screens/main/NotificationsScreen';
 import MyLeadsScreen from '../screens/main/MyLeadsScreen';
+import MyProjectScreen from '../screens/MyProjectScreen';
 import VideoReelScreen from '../screens/main/VideoReelScreen';
 import { MainStackParamList } from './types';
 
@@ -22,6 +23,11 @@ const MainNavigator: React.FC = () => {
       <Stack.Screen name="RewardsStore" component={RewardsStoreScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="MyLeads" component={MyLeadsScreen} />
+      <Stack.Screen
+        name="MyProject"
+        component={MyProjectScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name="VideoReels"
         component={VideoReelScreen}

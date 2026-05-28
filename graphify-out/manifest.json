@@ -1,0 +1,767 @@
+{
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\package.json": {
+    "mtime": 1778945896.255188,
+    "ast_hash": "42dae3f5156bee20b8cd9314be5ee4eb",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\package.json": {
+    "mtime": 1778939137.792089,
+    "ast_hash": "862d30975973eacf956fab86797f2005",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\server.js": {
+    "mtime": 1775939794.3357427,
+    "ast_hash": "f5e18a9cfc18044910550fccf83d2251",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\config\\cloudinary.js": {
+    "mtime": 1775384813.6584342,
+    "ast_hash": "3718e087631c42130d93292200ee1cd2",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\config\\corsOptions.js": {
+    "mtime": 1775925839.3679569,
+    "ast_hash": "a5e0b14de9af07ee93870b9e19d79018",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\config\\db.js": {
+    "mtime": 1778939137.8000898,
+    "ast_hash": "fad81f5ff8b61337812007e9c907cbf5",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\config\\loadEnv.js": {
+    "mtime": 1778939137.792089,
+    "ast_hash": "3a2233759ce38fc747b48449c8b38af9",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\controllers\\adminController.js": {
+    "mtime": 1775929524.6007957,
+    "ast_hash": "a9c7724025526c0c1972d125cd75106d",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\controllers\\authController.js": {
+    "mtime": 1775940078.608267,
+    "ast_hash": "7b8b6159fe067ae4e89b293df373e852",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\controllers\\leadController.js": {
+    "mtime": 1775929282.3529716,
+    "ast_hash": "18ae863083dd76e99207000ea2ae8718",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\controllers\\referralController.js": {
+    "mtime": 1775370450.495524,
+    "ast_hash": "1368f3544565292e9119de270e8f6f97",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\controllers\\userController.js": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "94c982c5182ee58801b3a02c6f59bf7d",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\controllers\\videoController.js": {
+    "mtime": 1775752748.520156,
+    "ast_hash": "38a144c1aaf327a39fd44e5e8256ce68",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\controllers\\walletController.js": {
+    "mtime": 1775926660.7000773,
+    "ast_hash": "44e5202850daf4b8675ff2333fd6db8a",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\middleware\\admin.js": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "149632363afb6c44160cde2f1deaefa1",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\middleware\\auth.js": {
+    "mtime": 1775370450.4284906,
+    "ast_hash": "f32da2af3de04d5ec6518cba619b6209",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\middleware\\errorHandler.js": {
+    "mtime": 1775925825.6948266,
+    "ast_hash": "10314e885c1d4eb18c8dcd00bd77a329",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\models\\Agent.js": {
+    "mtime": 1775929239.2208464,
+    "ast_hash": "fa058fcabaaa8fcb96eee7211fbfd2b7",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\models\\AppSettings.js": {
+    "mtime": 1775929239.2208464,
+    "ast_hash": "6d995df06c627212ddbfe9cc87764d61",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\models\\Lead.js": {
+    "mtime": 1775929257.9705677,
+    "ast_hash": "fa8e0423c15355472946900c703a4903",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\models\\Reward.js": {
+    "mtime": 1775370450.5401294,
+    "ast_hash": "bdc442b9a813036f8b33227a003531e6",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\models\\Transaction.js": {
+    "mtime": 1775926659.2857707,
+    "ast_hash": "fd932fbeac6ffb4228e0ef088c7cca60",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\models\\User.js": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "36ed02de56bbe63e0f50b17082763b8c",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\admin.js": {
+    "mtime": 1775929284.6520698,
+    "ast_hash": "07e817ec172978477d3efc31c6eceb1c",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\auth.js": {
+    "mtime": 1775753426.404547,
+    "ast_hash": "d3cec180dcd6ddf685e6e70e739fafa3",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\lead.js": {
+    "mtime": 1775373443.701956,
+    "ast_hash": "cd535e0b107068f87f432b4df346ce4b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\referral.js": {
+    "mtime": 1775370450.42749,
+    "ast_hash": "1e35744a00abd4301e3fc70fd2c45aff",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\rewards.js": {
+    "mtime": 1775370450.4430363,
+    "ast_hash": "f09c8b4ca2965045532cae593869d0fb",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\user.js": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "45d0e1118fef9546779765ed095f73c0",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\videos.js": {
+    "mtime": 1775384820.0607164,
+    "ast_hash": "2811cf0fe097194016df2ae76fc04beb",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\routes\\wallet.js": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "8e80431ceadf44509153263b0eb30620",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\utils\\generateCode.js": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "50dd929cfdb11c17e79c14eaabacde96",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\utils\\getCoinSettings.js": {
+    "mtime": 1775929240.5792365,
+    "ast_hash": "0d6a01917949a9a6f7b01a723fe62f9d",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\utils\\migrateLeadStatuses.js": {
+    "mtime": 1775924333.8406093,
+    "ast_hash": "884c6b77daf20a18afd60bfb999d4073",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\utils\\seedCoinSettings.js": {
+    "mtime": 1775929241.076092,
+    "ast_hash": "ce4fcb7580c2865f1c6bb1938b9e43e3",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\utils\\seedRewards.js": {
+    "mtime": 1775370450.4450352,
+    "ast_hash": "53ede0129fd2817e7d07dce7b6a5c0cf",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\backend\\utils\\sendOTP.js": {
+    "mtime": 1775370450.4450352,
+    "ast_hash": "f176a0fdd7a25a6b0438f695a9409cc6",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\.eslintrc.json": {
+    "mtime": 1775934290.210264,
+    "ast_hash": "37ec0877f887e5d24b45db6049c1159e",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\next-env.d.ts": {
+    "mtime": 1775934569.0050871,
+    "ast_hash": "3cf36e94213e85dc306ec5f3f3760ecc",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\next.config.mjs": {
+    "mtime": 1778939131.115304,
+    "ast_hash": "d22255e453468e95a94685220e289c7d",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\package.json": {
+    "mtime": 1775934281.300181,
+    "ast_hash": "4e90bbcca6352851d67aaf5a54e618d4",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\postcss.config.mjs": {
+    "mtime": 1775064214.1299286,
+    "ast_hash": "239f3ebf717465dc636818a1a619398d",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\tsconfig.json": {
+    "mtime": 1775934569.001074,
+    "ast_hash": "d37b9cf9c03ef64c07a92a78d1227924",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\vercel.json": {
+    "mtime": 1775934646.5541234,
+    "ast_hash": "80a6c807a461c7b4d0e725e807a255df",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\layout.tsx": {
+    "mtime": 1775934526.9942172,
+    "ast_hash": "18a8c39f09e3893873a74a323dc0e419",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\page.tsx": {
+    "mtime": 1775753805.874578,
+    "ast_hash": "61ec0717bf19d233f559ce900b462ad8",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\providers.tsx": {
+    "mtime": 1775753779.0115337,
+    "ast_hash": "8a5331d7f192b00588276237972f5044",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\layout.tsx": {
+    "mtime": 1775753805.96692,
+    "ast_hash": "f9262ccd8e3824cd6d367f813e512c41",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\agents\\page.tsx": {
+    "mtime": 1775929481.3030972,
+    "ast_hash": "ac0a33c05349cae5c4405a27e7685a92",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\dashboard\\page.tsx": {
+    "mtime": 1775926759.6841166,
+    "ast_hash": "705e8fe6760dbf33f552eaf070432784",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\leads\\page.tsx": {
+    "mtime": 1775929500.0117927,
+    "ast_hash": "74521bc02c1652032465438874c99a41",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\redemptions\\page.tsx": {
+    "mtime": 1775926742.027448,
+    "ast_hash": "c02675101d3ab08fb4dd6318629bd089",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\rewards\\page.tsx": {
+    "mtime": 1775754245.5465257,
+    "ast_hash": "2c1e64718b223cc597da3cf33e39f925",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\settings\\page.tsx": {
+    "mtime": 1775929444.7395318,
+    "ast_hash": "69f1ac7a26903c93ba8f863386f4d704",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\transactions\\page.tsx": {
+    "mtime": 1775926769.2836177,
+    "ast_hash": "f510c3fbc4ef089db59c92272af5a0f7",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\(admin)\\users\\page.tsx": {
+    "mtime": 1775754016.2510326,
+    "ast_hash": "375d223c0e244ff1621c5ef9304e9127",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\app\\login\\page.tsx": {
+    "mtime": 1775939199.1376119,
+    "ast_hash": "1139eba8fb54fa444be7a47a99525d4f",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\AdminShell.tsx": {
+    "mtime": 1775753778.9155285,
+    "ast_hash": "3216fe73da9bd004ffa46c56ce25c152",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\Header.tsx": {
+    "mtime": 1775753789.1937795,
+    "ast_hash": "c6b93a4da63ce3af09fd768ec0ee78a7",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ProtectedRoute.tsx": {
+    "mtime": 1775753748.816824,
+    "ast_hash": "ca1120e6c43facacf2f64e05dad5e335",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\Sidebar.tsx": {
+    "mtime": 1775929490.6674068,
+    "ast_hash": "6b93a5b8f814971081cd9b3567a7dcf6",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\crm\\LeadDetailsDrawer.tsx": {
+    "mtime": 1775929409.8335514,
+    "ast_hash": "b281537c0c5957fb185547d0298040bf",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\crm\\StatusBadge.tsx": {
+    "mtime": 1775919391.7747898,
+    "ast_hash": "8217ed7a2fdbfa86d105b6d26019e699",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\button.tsx": {
+    "mtime": 1775753635.6177633,
+    "ast_hash": "d7482541bd38117178a13fdb904e76cf",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\card.tsx": {
+    "mtime": 1775753658.8447955,
+    "ast_hash": "4a7d03ddef167912aa9d7d70556273bd",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\dialog.tsx": {
+    "mtime": 1775753697.7671003,
+    "ast_hash": "eb9801ff2ef967dad2fd4efce1330451",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\drawer.tsx": {
+    "mtime": 1775919390.7445366,
+    "ast_hash": "0af508a4b2dcf4608f2122d542683584",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\input.tsx": {
+    "mtime": 1775753648.9557424,
+    "ast_hash": "bb29a769d9192bc0ec0b6752f9ad5c95",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\label.tsx": {
+    "mtime": 1775753669.6926303,
+    "ast_hash": "68d2785474eec578ad0ba28bac4a46bf",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\select.tsx": {
+    "mtime": 1775753719.1417627,
+    "ast_hash": "fc6964a7f2341497b66659a675b9a525",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\table.tsx": {
+    "mtime": 1775753658.9670806,
+    "ast_hash": "d9b6ac0edabd2fd9f8f3280228a05f8a",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\tabs.tsx": {
+    "mtime": 1775753719.2189043,
+    "ast_hash": "129f2e3cd86f5bc8d69d870653194ee2",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\textarea.tsx": {
+    "mtime": 1775753668.8789885,
+    "ast_hash": "d7abde5e515b018deaddc9c832feb3d4",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\components\\ui\\toast.tsx": {
+    "mtime": 1775753735.9328887,
+    "ast_hash": "218617fc2d16f664d0b866e140d144a6",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\lib\\api.ts": {
+    "mtime": 1778939137.7960885,
+    "ast_hash": "835530c0603cb5b776fe495b3a818e58",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\lib\\lead-status.ts": {
+    "mtime": 1775924356.919131,
+    "ast_hash": "3e8b4fab5e67f267c547e71774f79090",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\lib\\redemption-labels.ts": {
+    "mtime": 1775926704.985445,
+    "ast_hash": "f5416383d6e62a97c145d291cb0466f7",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\lib\\utils.ts": {
+    "mtime": 1775753622.6480532,
+    "ast_hash": "61e1bfddfc5a906c4708824b84559aeb",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\src\\types\\lead.ts": {
+    "mtime": 1775929380.1747663,
+    "ast_hash": "cc0d2c44d3e63c15fbdcb91dd8892f95",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\app.json": {
+    "mtime": 1775939199.1376119,
+    "ast_hash": "f0a4528635b48e4e6f62e28a2412bbae",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\App.tsx": {
+    "mtime": 1775760962.4512813,
+    "ast_hash": "0e612d50d7d29ff70e1f6fd4dc2a4506",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\babel.config.js": {
+    "mtime": 1775328215.924068,
+    "ast_hash": "dc38d13beeef2082cbcce0dc57100970",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\eas.json": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "c046e3ab50ac9fb7edaccac4dd080e32",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\index.ts": {
+    "mtime": 1775327883.1055708,
+    "ast_hash": "a8fb12b2dec34d83c20d61a087eddd63",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\package.json": {
+    "mtime": 1779890718.405278,
+    "ast_hash": "775011561aa08215c891e8ca42c8c0c9",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\tsconfig.json": {
+    "mtime": 499162500.0,
+    "ast_hash": "a5df9ddad82c56de332cbb7d00dd294b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\assets\\gvLogoSvgXml.ts": {
+    "mtime": 1775917475.509858,
+    "ast_hash": "8375e5cb7a8acfcf45b852cfa4d755b7",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\AnimatedCard.tsx": {
+    "mtime": 1775370450.4450352,
+    "ast_hash": "c506175839447303f5e684d81bb41c44",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\AnimatedCoinCount.tsx": {
+    "mtime": 1775370450.4450352,
+    "ast_hash": "fc1a06e8eff1c1f55b5cd5c2622c8f3e",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\ErrorBoundary.tsx": {
+    "mtime": 1775760962.489165,
+    "ast_hash": "179613e88bee43c85bc932689f305d41",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\GvLogo.tsx": {
+    "mtime": 1775917387.0649781,
+    "ast_hash": "bd5f2a81be557ad47e3467d059cb5586",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\index.ts": {
+    "mtime": 1775917411.4615984,
+    "ast_hash": "c9fb4d302ccacde240cf9da91d4d91e3",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\OfflineBanner.tsx": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "4b7e8e5789f67bc5c92dbd059bb0ebfb",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\SuccessCheckmark.tsx": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "2bfd35e60995633c4ff1d01222cd043f",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\VideoItem.tsx": {
+    "mtime": 1775385706.645641,
+    "ast_hash": "8cb720a39af9a7da1c327e64e293cbf6",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\ui\\Button.tsx": {
+    "mtime": 1775760962.4532812,
+    "ast_hash": "6d52f88918cc90b645d0cf40552c2b58",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\ui\\ErrorRetry.tsx": {
+    "mtime": 1775760962.691626,
+    "ast_hash": "64eff70c11334cf9c39745de0c6dcf4b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\ui\\index.ts": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "7cc7917a81fc14180f96f1220eb0f160",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\components\\ui\\LoadingOverlay.tsx": {
+    "mtime": 1775760962.4982343,
+    "ast_hash": "5e572c1559cb45963d10f853068871c0",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\constants\\index.ts": {
+    "mtime": 1778939137.8000898,
+    "ast_hash": "daccd484078095833a8c41addf345c0f",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\constants\\theme.ts": {
+    "mtime": 1775760962.4154906,
+    "ast_hash": "baafb023ab9c8da456cb2e6ae71a039b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\navigation\\AuthNavigator.tsx": {
+    "mtime": 1775327883.1055708,
+    "ast_hash": "4234751ec4960ba2069d03855fa26b2a",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\navigation\\index.ts": {
+    "mtime": 1775246360.4662812,
+    "ast_hash": "4ba8a9e35b71b8f03c2ad4229305ef43",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\navigation\\MainNavigator.tsx": {
+    "mtime": 1775385747.978706,
+    "ast_hash": "44ed007f807489e161789880d2f8d2c0",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\navigation\\MainTabNavigator.tsx": {
+    "mtime": 1775760962.4502835,
+    "ast_hash": "96cdda20a339f2bf3512e152209a6be7",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\navigation\\RootNavigator.tsx": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "c42c7987801cda352f0e6453b0b7a613",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\navigation\\types.ts": {
+    "mtime": 1775940155.6676726,
+    "ast_hash": "ebe476a8741d1a157b2cad6f670b660a",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\index.ts": {
+    "mtime": 1775246342.1002789,
+    "ast_hash": "fe6f311d6ae407d7ac7a972921df0338",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\auth\\index.ts": {
+    "mtime": 1775370450.444033,
+    "ast_hash": "fb832d5082a1d800f5c4252717d77fc9",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\auth\\LoginScreen.tsx": {
+    "mtime": 1775940157.075025,
+    "ast_hash": "2e8fb49da43959a7958e8db71f502d95",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\auth\\OnboardingScreen.tsx": {
+    "mtime": 1775917796.1156003,
+    "ast_hash": "dd755476e3ba0a47c8ac0be2fabf51a9",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\auth\\OTPScreen.tsx": {
+    "mtime": 1775940174.4129412,
+    "ast_hash": "e2b9fe77639a0d2101b83d953b44f149",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\auth\\SplashScreen.tsx": {
+    "mtime": 1775940157.9148128,
+    "ast_hash": "8d0364a5e2659f4aeb981128e8b49bea",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\BookSiteVisitScreen.tsx": {
+    "mtime": 1775929352.525591,
+    "ast_hash": "ab5c8f1c4ac12ad60a2036517626aa3c",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\HomeScreen.tsx": {
+    "mtime": 1775760962.4992325,
+    "ast_hash": "6cd5e5e97436df99054325cd1c8bcb03",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\index.ts": {
+    "mtime": 1775385740.4168904,
+    "ast_hash": "47daef5f0b9d111ee30eefbb2651bf11",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\MyLeadsScreen.tsx": {
+    "mtime": 1775924380.464371,
+    "ast_hash": "3fcc683417ede45588e695a58d1d233b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\NotificationsScreen.tsx": {
+    "mtime": 1775760962.62351,
+    "ast_hash": "c1f1ffd6fc6b81f4df0499579f0e4f89",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\ProfileScreen.tsx": {
+    "mtime": 1775760962.62351,
+    "ast_hash": "c47301fa03156c27270863a8e5b392ea",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\ReferScreen.tsx": {
+    "mtime": 1775925360.133036,
+    "ast_hash": "e184b8083bffadf30049f6c00c7cfa57",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\RewardsStoreScreen.tsx": {
+    "mtime": 1775926793.45535,
+    "ast_hash": "f3c794d234b8b35018f8d1900bcb8e2b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\VideoReelScreen.tsx": {
+    "mtime": 1775755992.1109402,
+    "ast_hash": "3a394d5556ef5c3dddddeca14d3ead8b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\screens\\main\\WalletScreen.tsx": {
+    "mtime": 1775926799.6444676,
+    "ast_hash": "1f61ecc898d16f73e3357402bef5dbcc",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\api.ts": {
+    "mtime": 1775387005.2915351,
+    "ast_hash": "b2c5aa65c24276dac58f9f9154193b81",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\auth.service.ts": {
+    "mtime": 1775940177.29478,
+    "ast_hash": "46dcced5fd3e222bcbf62360a99858b6",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\index.ts": {
+    "mtime": 1775384840.9695044,
+    "ast_hash": "68cba696c0e792a67ac84ee06e1e2b00",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\lead.service.ts": {
+    "mtime": 1775755765.7794988,
+    "ast_hash": "38dc4fa25cc5baf0d0b09da54b8f62b8",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\notification.service.ts": {
+    "mtime": 1775370450.4430363,
+    "ast_hash": "3672c84f77c407890c0923ef99d9fc36",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\referral.service.ts": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "c734f89af4d9085563bf263a7037422b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\reward.service.ts": {
+    "mtime": 1775370450.4450352,
+    "ast_hash": "7268a827760d3f90c7964cb52bb6ff42",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\user.service.ts": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "abc34c67545b59524fc34b988ed33d46",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\video.service.ts": {
+    "mtime": 1775385671.7178137,
+    "ast_hash": "bd80f857463920761e22a79dda1a1497",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\services\\wallet.service.ts": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "a4d1b3da50700c23a331ec0d10bb2f1b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\stores\\authStore.ts": {
+    "mtime": 1775370450.4430363,
+    "ast_hash": "b55bea9c56c03d274e4dd9f9965c9dcc",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\stores\\index.ts": {
+    "mtime": 1775370450.4430363,
+    "ast_hash": "1b1d9b4835eb6939fbecfe90f5bef6d6",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\src\\stores\\notificationStore.ts": {
+    "mtime": 1775370450.5391195,
+    "ast_hash": "a9909f13cc5871afbd118e2383406df3",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\README.md": {
+    "mtime": 1775925849.195028,
+    "ast_hash": "5f9e1ce8298ad44c3bfd3af212c98558",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\AGENTS.md": {
+    "mtime": 1775415466.980362,
+    "ast_hash": "9e09241799026ac05be315a2f0b50055",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\CLAUDE.md": {
+    "mtime": 1775415466.9814086,
+    "ast_hash": "5c27369b226fcf2be8a6cfe52224e767",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\README.md": {
+    "mtime": 1775925864.2039435,
+    "ast_hash": "0294d4776af7e74fcb146dbffda6eb19",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\README.md": {
+    "mtime": 1775924747.1025138,
+    "ast_hash": "d265656ac0c9285b2682edd39e873db3",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\public\\file.svg": {
+    "mtime": 1775064214.1354442,
+    "ast_hash": "d09f95206c3fa0bb9bd9fefabfd0ea71",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\public\\globe.svg": {
+    "mtime": 1775064214.1444762,
+    "ast_hash": "2aaafa6a49b6563925fe440891e32717",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\public\\greenpadventures.svg": {
+    "mtime": 1775052268.416424,
+    "ast_hash": "cb9e3a57cfb6bd5fdc88d3555ca88d4b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\public\\gv-logo.svg": {
+    "mtime": 1775917396.0072114,
+    "ast_hash": "c4a05ae270d60746c8aca53f9c37e51b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\public\\next.svg": {
+    "mtime": 1775064214.1510458,
+    "ast_hash": "8e061864f388b47f33a1c3780831193e",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\public\\vercel.svg": {
+    "mtime": 1775064214.1594357,
+    "ast_hash": "c0af2f507b369b085b35ef4bbe3bcf1e",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\greenpad-admin\\public\\window.svg": {
+    "mtime": 1775064214.1634576,
+    "ast_hash": "a2760511c65806022ad20adf74370ff3",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\assets\\adaptive-icon.png": {
+    "mtime": 499162500.0,
+    "ast_hash": "97dae5a0e62ad8551d8a31897b425e63",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\assets\\favicon.png": {
+    "mtime": 499162500.0,
+    "ast_hash": "4f1cb2cac2370cd5050681232e8575a8",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\assets\\gpv-header2.svg": {
+    "mtime": 1775226016.5938504,
+    "ast_hash": "cb9e3a57cfb6bd5fdc88d3555ca88d4b",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\assets\\icon.png": {
+    "mtime": 499162500.0,
+    "ast_hash": "4e3f888fc8475f69fd5fa32f1ad5216a",
+    "semantic_hash": ""
+  },
+  "C:\\GrownUp.dev\\GreenPad Ventures Solar App\\greenpad-app-01\\mobile-app\\assets\\splash-icon.png": {
+    "mtime": 499162500.0,
+    "ast_hash": "97dae5a0e62ad8551d8a31897b425e63",
+    "semantic_hash": ""
+  }
+}

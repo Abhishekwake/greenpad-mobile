@@ -19,6 +19,7 @@ export type MainStackParamList = {
   RewardsStore: undefined;
   Notifications: undefined;
   MyLeads: undefined;
+  MyProject: undefined;
   VideoReels: { initialIndex: number };
 };
 

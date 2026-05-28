@@ -13,3 +13,5 @@ export type { Reward } from './reward.service';
 export { notificationService } from './notification.service';
 export { videoService } from './video.service';
 export type { Video } from './video.service';
+export { fetchMyProject, getMyProject } from './project.service';
+export type { MyProject, ProjectStage, ProjectTask } from './project.service';

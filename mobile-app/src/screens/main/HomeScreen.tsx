@@ -28,9 +28,11 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useQuery } from '@tanstack/react-query';
 import Toast from 'react-native-toast-message';
 import { COLORS, SIZES } from '../../constants';
 import { userService, leadService, videoService } from '../../services';
+import { fetchMyProject } from '../../services/project.service';
 import type { Lead } from '../../services/lead.service';
 import type { Video } from '../../services/video.service';
 import { getErrorMessage } from '../../services/api';
@@ -363,6 +365,13 @@ const HomeScreen: React.FC = () => {
   const { userData, updateCoins } = useAuthStore();
   const loadingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
+  const { data: activeProject } = useQuery({
+    queryKey: ['myProject'],
+    queryFn: fetchMyProject,
+    staleTime: 60000,
+    retry: false,
+  });
+
   const fetchDashboard = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
@@ -559,6 +568,31 @@ const HomeScreen: React.FC = () => {
         }
       >
         <CoinWalletCard coins={userCoins} onViewWallet={() => tabNavigation.navigate('Wallet')} />
+
+        {activeProject && (
+          <TouchableOpacity
+            style={styles.projectTrackCard}
+            onPress={() => navigateToStack('MyProject')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.projectTrackLeft}>
+              <View style={styles.projectTrackIcon}>
+                <Ionicons name="construct" size={18} color="#1D9E75" />
+              </View>
+              <View>
+                <Text style={styles.projectTrackTitle}>Track installation</Text>
+                <Text style={styles.projectTrackSub}>
+                  {activeProject.stages?.find((s: { status: string; name: string }) => s.status === 'active')?.name ||
+                    'In progress'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.projectTrackBadge}>
+              <Text style={styles.projectTrackBadgeText}>Live</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#1D9E75" />
+          </TouchableOpacity>
+        )}
 
         <View style={styles.actionGrid}>
           {actionItems.map((item, index) => (
@@ -910,6 +944,35 @@ const styles = StyleSheet.create({
     color: COLORS.gray[500],
     marginTop: 8,
   },
+  projectTrackCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#e8f5f0',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#c3e8d8',
+  },
+  projectTrackLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  projectTrackIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  projectTrackTitle: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
+  projectTrackSub: { fontSize: 12, color: '#2d8c5e', marginTop: 1 },
+  projectTrackBadge: {
+    backgroundColor: '#1D9E75',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  projectTrackBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
 });
 
 export default HomeScreen;
