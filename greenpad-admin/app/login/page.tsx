@@ -12,27 +12,33 @@ import { useToast } from "@/components/ui/toast";
 export default function LoginPage() {
   const router = useRouter();
   const { error: showError } = useToast();
-  const [email, setEmail] = useState("admin@greenpad.com");
+  const [email, setEmail] = useState(
+    process.env.NODE_ENV === "development" ? "admin@greenpad.com" : ""
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("adminToken")) {
       router.replace("/dashboard");
     }
   }, [router]);
-  const [password, setPassword] = useState("admin123");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await api.post<{ success: boolean; token: string; user: { name: string; email?: string } }>(
-        "/auth/admin-login",
-        { email, password }
-      );
+      const { data } = await api.post<{
+        success: boolean;
+        token: string;
+        user: { name: string; email?: string; adminRole?: string };
+      }>("/auth/admin-login", { email, password });
       if (data.success && data.token) {
         localStorage.setItem("adminToken", data.token);
         localStorage.setItem("adminName", data.user?.name || "Admin");
+        if (data.user?.adminRole) {
+          localStorage.setItem("adminRole", data.user.adminRole);
+        }
         router.push("/dashboard");
       } else {
         showError("Invalid credentials");
@@ -95,7 +101,11 @@ export default function LoginPage() {
             )}
           </Button>
         </form>
-        <p className="mt-6 text-center text-xs text-gray-400">Default: admin@greenpad.com / admin123</p>
+        {process.env.NODE_ENV === "development" && (
+          <p className="mt-6 text-center text-xs text-gray-400">
+            Dev: admin@greenpad.com / admin123 (or set ADMIN_PASSWORD_HASH on API)
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,57 +1,15 @@
 const Lead = require('../models/Lead');
 const Project = require('../models/Project');
 const WorkflowTemplate = require('../models/WorkflowTemplate');
-
-function mergeStagesWithTemplate(template, stageStatuses) {
-  const statusMap = new Map((stageStatuses || []).map((s) => [s.stageId, s]));
-
-  return [...(template?.stages || [])]
-    .sort((a, b) => a.order - b.order)
-    .map((stage) => {
-      const stageStatus = statusMap.get(stage.stageId) || {};
-      const taskStatusMap = new Map((stageStatus.tasks || []).map((t) => [t.taskId, t]));
-
-      return {
-        stageId: stage.stageId,
-        name: stage.name,
-        order: stage.order,
-        visibleToCustomer: stage.visibleToCustomer,
-        status: stageStatus.status || 'pending',
-        delayReason: stageStatus.delayReason,
-        delayExpectedDate: stageStatus.delayExpectedDate,
-        completedAt: stageStatus.completedAt,
-        tasks: (stage.tasks || []).map((task) => {
-          const taskStatus = taskStatusMap.get(task.taskId) || {};
-          return {
-            taskId: task.taskId,
-            name: task.name,
-            assignedRole: task.assignedRole,
-            docRequired: task.docRequired,
-            completed: taskStatus.completed || false,
-            completedBy: taskStatus.completedBy,
-            completedAt: taskStatus.completedAt,
-          };
-        }),
-      };
-    });
-}
-
-function summarizeStageStatuses(stageStatuses) {
-  const total = stageStatuses?.length || 0;
-  const done = (stageStatuses || []).filter((s) => s.status === 'done').length;
-  const delayedStages = (stageStatuses || []).filter((s) => s.status === 'delayed');
-
-  return {
-    done,
-    total,
-    delayedCount: delayedStages.length,
-    delays: delayedStages.map((s) => ({
-      stageId: s.stageId,
-      delayReason: s.delayReason,
-      delayExpectedDate: s.delayExpectedDate,
-    })),
-  };
-}
+const {
+  flattenStagesFromTemplate,
+  mergeStagesWithTemplate,
+  mergePhasesWithTemplate,
+  buildCustomerView,
+  summarizeStageStatuses,
+  syncProjectStageStatuses,
+  needsStageSync,
+} = require('../utils/workflowHelpers');
 
 async function loadTemplateForProject(project) {
   if (project.workflowTemplateId) {
@@ -61,8 +19,30 @@ async function loadTemplateForProject(project) {
   return WorkflowTemplate.findOne({ tenantId: project.tenantId || 'greenpad' }).lean();
 }
 
+/** Sync legacy stage IDs to current template; optionally save to DB. */
+async function loadProjectWithTemplate(projectId, { persistSync = false } = {}) {
+  const project = await Project.findById(projectId);
+  if (!project) return null;
+
+  const template = await loadTemplateForProject(project);
+  if (template && needsStageSync(project.stageStatuses, template)) {
+    project.stageStatuses = syncProjectStageStatuses(project.stageStatuses, template);
+    const flat = flattenStagesFromTemplate(template);
+    const active = project.stageStatuses.find((s) => s.status === 'active');
+    project.currentStageId = active?.stageId || flat[0]?.stageId || project.currentStageId;
+    if (!project.workflowTemplateId && template._id) {
+      project.workflowTemplateId = template._id;
+    }
+    if (persistSync) {
+      await project.save();
+    }
+  }
+
+  return { project, template };
+}
+
 function advanceCurrentStage(project, template) {
-  const orderedStages = [...(template?.stages || [])].sort((a, b) => a.order - b.order);
+  const orderedStages = flattenStagesFromTemplate(template);
   const currentIndex = orderedStages.findIndex((s) => s.stageId === project.currentStageId);
 
   for (let i = currentIndex + 1; i < orderedStages.length; i += 1) {
@@ -79,6 +59,19 @@ function advanceCurrentStage(project, template) {
   if (allDone) {
     project.status = 'completed';
   }
+}
+
+function buildProjectPayload(project, template) {
+  const phases = mergePhasesWithTemplate(template, project.stageStatuses);
+  const stages = mergeStagesWithTemplate(template, project.stageStatuses);
+  const customerView = buildCustomerView(phases);
+
+  return {
+    ...project,
+    phases,
+    stages,
+    customerView,
+  };
 }
 
 // POST /api/project/create
@@ -106,17 +99,17 @@ exports.createProject = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Project already exists for this lead' });
     }
 
-    const template = await WorkflowTemplate.findOne({ tenantId: 'greenpad' });
-    if (!template || !template.stages?.length) {
+    const template = await WorkflowTemplate.findOne({ tenantId: 'greenpad' }).lean();
+    const orderedStages = flattenStagesFromTemplate(template);
+    if (!orderedStages.length) {
       return res.status(500).json({ success: false, message: 'Workflow template not configured' });
     }
 
-    const orderedStages = [...template.stages].sort((a, b) => a.order - b.order);
     const firstStage = orderedStages[0];
 
-    const stageStatuses = orderedStages.map((s) => ({
+    const stageStatuses = orderedStages.map((s, index) => ({
       stageId: s.stageId,
-      status: s.order === 1 ? 'active' : 'pending',
+      status: index === 0 ? 'active' : 'pending',
       tasks: (s.tasks || []).map((t) => ({ taskId: t.taskId, completed: false })),
     }));
 
@@ -134,7 +127,7 @@ exports.createProject = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Project created successfully',
-      data: project,
+      data: buildProjectPayload(project.toObject(), template),
     });
   } catch (error) {
     next(error);
@@ -144,20 +137,19 @@ exports.createProject = async (req, res, next) => {
 // GET /api/project/my-project
 exports.getMyProject = async (req, res, next) => {
   try {
-    const project = await Project.findOne({ customerId: req.user._id }).lean();
+    let project = await Project.findOne({ customerId: req.user._id });
     if (!project) {
       return res.status(404).json({ success: false, message: 'No project found' });
     }
 
-    const template = await loadTemplateForProject(project);
-    const stages = mergeStagesWithTemplate(template, project.stageStatuses);
+    const loaded = await loadProjectWithTemplate(project._id, { persistSync: true });
+    if (!loaded) {
+      return res.status(404).json({ success: false, message: 'No project found' });
+    }
 
     res.json({
       success: true,
-      data: {
-        ...project,
-        stages,
-      },
+      data: buildProjectPayload(loaded.project.toObject(), loaded.template),
     });
   } catch (error) {
     next(error);
@@ -202,20 +194,14 @@ exports.getAdminProjects = async (req, res, next) => {
 // GET /api/admin/project/:id
 exports.getAdminProjectById = async (req, res, next) => {
   try {
-    const project = await Project.findById(req.params.id).lean();
-    if (!project) {
+    const loaded = await loadProjectWithTemplate(req.params.id, { persistSync: true });
+    if (!loaded) {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    const template = await loadTemplateForProject(project);
-    const stages = mergeStagesWithTemplate(template, project.stageStatuses);
-
     res.json({
       success: true,
-      data: {
-        ...project,
-        stages,
-      },
+      data: buildProjectPayload(loaded.project.toObject(), loaded.template),
     });
   } catch (error) {
     next(error);
@@ -262,15 +248,11 @@ exports.updateProjectStage = async (req, res, next) => {
     await project.save();
 
     const template = await loadTemplateForProject(project.toObject());
-    const stages = mergeStagesWithTemplate(template, project.stageStatuses);
 
     res.json({
       success: true,
       message: 'Stage updated',
-      data: {
-        ...project.toObject(),
-        stages,
-      },
+      data: buildProjectPayload(project.toObject(), template),
     });
   } catch (error) {
     next(error);
@@ -280,13 +262,10 @@ exports.updateProjectStage = async (req, res, next) => {
 // PATCH /api/admin/project/:id/task
 exports.updateProjectTask = async (req, res, next) => {
   try {
-    const { stageId, taskId, completed, completedBy } = req.body;
+    const { stageId, taskId, completed, completedBy, name, assignedRole, docRequired } = req.body;
 
     if (!stageId || !taskId) {
       return res.status(400).json({ success: false, message: 'stageId and taskId are required' });
-    }
-    if (completed === undefined) {
-      return res.status(400).json({ success: false, message: 'completed is required' });
     }
 
     const project = await Project.findById(req.params.id);
@@ -299,27 +278,121 @@ exports.updateProjectTask = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Stage not found on project' });
     }
 
-    const taskStatus = stageStatus.tasks.find((t) => t.taskId === taskId);
+    let taskStatus = stageStatus.tasks.find((t) => t.taskId === taskId);
     if (!taskStatus) {
-      return res.status(404).json({ success: false, message: 'Task not found on project' });
+      taskStatus = { taskId, completed: false };
+      stageStatus.tasks.push(taskStatus);
     }
 
-    taskStatus.completed = Boolean(completed);
+    if (completed !== undefined) {
+      taskStatus.completed = Boolean(completed);
+      taskStatus.completedAt = completed ? new Date() : undefined;
+    }
     if (completedBy !== undefined) taskStatus.completedBy = completedBy;
-    taskStatus.completedAt = completed ? new Date() : undefined;
+    if (name !== undefined) taskStatus.name = String(name).trim();
+    if (assignedRole !== undefined) taskStatus.assignedRole = String(assignedRole).trim();
+    if (docRequired !== undefined) taskStatus.docRequired = Boolean(docRequired);
 
     await project.save();
 
     const template = await loadTemplateForProject(project.toObject());
-    const stages = mergeStagesWithTemplate(template, project.stageStatuses);
 
     res.json({
       success: true,
       message: 'Task updated',
-      data: {
-        ...project.toObject(),
-        stages,
-      },
+      data: buildProjectPayload(project.toObject(), template),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/admin/project/:id/task
+exports.addProjectTask = async (req, res, next) => {
+  try {
+    const { stageId, name, assignedRole, docRequired } = req.body;
+
+    if (!stageId || !name || !String(name).trim()) {
+      return res.status(400).json({ success: false, message: 'stageId and name are required' });
+    }
+
+    const project = await Project.findById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found' });
+    }
+
+    const stageStatus = project.stageStatuses.find((s) => s.stageId === stageId);
+    if (!stageStatus) {
+      return res.status(404).json({ success: false, message: 'Stage not found on project' });
+    }
+
+    const taskId = `task_custom_${Date.now()}`;
+    stageStatus.tasks.push({
+      taskId,
+      name: String(name).trim(),
+      assignedRole: assignedRole ? String(assignedRole).trim() : '',
+      docRequired: Boolean(docRequired),
+      completed: false,
+    });
+
+    await project.save();
+
+    const template = await loadTemplateForProject(project.toObject());
+
+    res.status(201).json({
+      success: true,
+      message: 'Work item added',
+      data: buildProjectPayload(project.toObject(), template),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// DELETE /api/admin/project/:id/task
+exports.deleteProjectTask = async (req, res, next) => {
+  try {
+    const { stageId, taskId } = req.body;
+
+    if (!stageId || !taskId) {
+      return res.status(400).json({ success: false, message: 'stageId and taskId are required' });
+    }
+
+    const project = await Project.findById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Project not found' });
+    }
+
+    const stageStatus = project.stageStatuses.find((s) => s.stageId === stageId);
+    if (!stageStatus) {
+      return res.status(404).json({ success: false, message: 'Stage not found on project' });
+    }
+
+    const isCustom = String(taskId).startsWith('task_custom_');
+    const hadCustom = stageStatus.tasks.some((t) => t.taskId === taskId);
+
+    if (isCustom) {
+      if (!hadCustom) {
+        return res.status(404).json({ success: false, message: 'Task not found on project' });
+      }
+      stageStatus.tasks = stageStatus.tasks.filter((t) => t.taskId !== taskId);
+    } else {
+      if (!stageStatus.removedTaskIds) stageStatus.removedTaskIds = [];
+      if (stageStatus.removedTaskIds.includes(taskId)) {
+        return res.status(404).json({ success: false, message: 'Task not found on project' });
+      }
+      stageStatus.removedTaskIds.push(taskId);
+      stageStatus.tasks = stageStatus.tasks.filter((t) => t.taskId !== taskId);
+    }
+
+    await project.save();
+
+    const template = await loadTemplateForProject(project.toObject());
+
+    res.json({
+      success: true,
+      message: 'Work item removed',
+      data: buildProjectPayload(project.toObject(), template),
     });
   } catch (error) {
     next(error);

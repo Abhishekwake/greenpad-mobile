@@ -33,9 +33,19 @@ const MyProjectScreen: React.FC = () => {
     staleTime: 30000,
   });
 
-  const visibleStages = project?.stages?.filter((s) => s.visibleToCustomer) ?? [];
-  const doneCount = visibleStages.filter((s) => s.status === 'done').length;
-  const totalCount = visibleStages.length;
+  const cv = project?.customerView;
+  const visiblePhases = (project?.phases ?? [])
+    .map((phase) => ({
+      ...phase,
+      stages: phase.stages.filter((s) => s.visibleToCustomer),
+    }))
+    .filter((p) => p.stages.length > 0);
+
+  const doneCount = visiblePhases.reduce(
+    (acc, p) => acc + p.stages.filter((s) => s.status === 'done').length,
+    0
+  );
+  const totalCount = visiblePhases.reduce((acc, p) => acc + p.stages.length, 0);
   const progressPct = totalCount > 0 ? doneCount / totalCount : 0;
 
   const pulse = useSharedValue(1);
@@ -58,7 +68,7 @@ const MyProjectScreen: React.FC = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color="#1a1a1a" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Solar Project</Text>
+        <Text style={styles.headerTitle}>Installation Tracking</Text>
       </View>
 
       {isLoading ? (
@@ -81,6 +91,45 @@ const MyProjectScreen: React.FC = () => {
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Current status — simple customer view */}
+          <View style={styles.statusCard}>
+            {cv?.isDelayed ? (
+              <View style={styles.delayBanner}>
+                <Ionicons name="warning" size={18} color="#BA7517" />
+                <Text style={styles.delayBannerText}>Delayed</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>Current Phase</Text>
+              <Text style={styles.statusValue}>{cv?.currentPhase || '—'}</Text>
+            </View>
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>Current Stage</Text>
+              <Text style={styles.statusValue}>{cv?.currentStage || '—'}</Text>
+            </View>
+            {cv?.currentWork ? (
+              <View style={styles.statusRow}>
+                <Text style={styles.statusLabel}>Current Work</Text>
+                <Text style={styles.statusValueHighlight}>{cv.currentWork}</Text>
+              </View>
+            ) : null}
+            <View style={[styles.statusPill, cv?.isDelayed && styles.statusPillDelayed]}>
+              <Text style={[styles.statusPillText, cv?.isDelayed && styles.statusPillTextDelayed]}>
+                {cv?.statusLabel || 'In Progress'}
+              </Text>
+            </View>
+
+            {cv?.isDelayed && cv.delayReason ? (
+              <View style={styles.delayBox}>
+                <Text style={styles.delayText}>Reason: {cv.delayReason}</Text>
+                {cv.delayExpectedDate ? (
+                  <Text style={styles.delayExpected}>Expected: {cv.delayExpectedDate}</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
           <View style={styles.infoCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={styles.solarIcon}>
@@ -94,7 +143,7 @@ const MyProjectScreen: React.FC = () => {
             <View style={styles.progressSection}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                 <Text style={styles.progressLabel}>
-                  {doneCount} of {totalCount} stages complete
+                  {doneCount} of {totalCount} steps complete
                 </Text>
                 <Text style={styles.progressPct}>{Math.round(progressPct * 100)}%</Text>
               </View>
@@ -104,91 +153,72 @@ const MyProjectScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={styles.timeline}>
-            {visibleStages.map((stage, index) => {
-              const isLast = index === visibleStages.length - 1;
-              const isDone = stage.status === 'done';
-              const isActive = stage.status === 'active';
-              const isDelayed = stage.status === 'delayed';
-              const isPending = stage.status === 'pending';
+          {/* Simple timeline grouped by phase */}
+          {visiblePhases.map((phase, phaseIndex) => (
+            <View key={phase.phaseId} style={styles.phaseBlock}>
+              <Text style={styles.phaseTitle}>{phase.name}</Text>
+              {phase.stages.map((stage, index) => {
+                const isLast =
+                  phaseIndex === visiblePhases.length - 1 && index === phase.stages.length - 1;
+                const isDone = stage.status === 'done';
+                const isActive = stage.status === 'active';
+                const isDelayed = stage.status === 'delayed';
+                const isPending = stage.status === 'pending';
+                const pendingTask = stage.tasks?.find((t) => !t.completed);
 
-              return (
-                <Animated.View
-                  key={stage.stageId}
-                  entering={FadeInDown.delay(index * 60).duration(400)}
-                  style={styles.stageRow}
-                >
-                  <View style={styles.dotColumn}>
-                    <View style={styles.dotWrapper}>
-                      {isActive && <Animated.View style={[styles.pulseRing, pulseStyle]} />}
-                      <View
+                return (
+                  <Animated.View
+                    key={stage.stageId}
+                    entering={FadeInDown.delay(index * 40).duration(350)}
+                    style={styles.stageRow}
+                  >
+                    <View style={styles.dotColumn}>
+                      <View style={styles.dotWrapper}>
+                        {isActive && <Animated.View style={[styles.pulseRing, pulseStyle]} />}
+                        <View
+                          style={[
+                            styles.dot,
+                            isDone && styles.dotDone,
+                            isActive && styles.dotActive,
+                            isDelayed && styles.dotDelayed,
+                            isPending && styles.dotPending,
+                          ]}
+                        >
+                          {isDone && <Ionicons name="checkmark" size={12} color="#fff" />}
+                          {isActive && <Ionicons name="refresh" size={10} color="#185FA5" />}
+                          {isDelayed && <Ionicons name="warning" size={10} color="#BA7517" />}
+                          {isPending && <Ionicons name="time-outline" size={10} color="#999" />}
+                        </View>
+                      </View>
+                      {!isLast && <View style={[styles.connector, isDone && styles.connectorDone]} />}
+                    </View>
+
+                    <View style={[styles.stageContent, !isLast && { paddingBottom: 20 }]}>
+                      <Text style={[styles.stageName, isDone && styles.stageNameDone]}>{stage.name}</Text>
+                      <Text
                         style={[
-                          styles.dot,
-                          isDone && styles.dotDone,
-                          isActive && styles.dotActive,
-                          isDelayed && styles.dotDelayed,
-                          isPending && styles.dotPending,
+                          styles.stageStatus,
+                          isDone && { color: '#1D9E75' },
+                          isActive && { color: '#185FA5' },
+                          isDelayed && { color: '#BA7517' },
                         ]}
                       >
-                        {isDone && <Ionicons name="checkmark" size={12} color="#fff" />}
-                        {isActive && <Ionicons name="refresh" size={10} color="#185FA5" />}
-                        {isDelayed && <Ionicons name="warning" size={10} color="#BA7517" />}
-                        {isPending && <Ionicons name="time-outline" size={10} color="#999" />}
-                      </View>
+                        {isDone
+                          ? 'Completed'
+                          : isActive
+                            ? pendingTask
+                              ? `Pending: ${pendingTask.name}`
+                              : 'In progress'
+                            : isDelayed
+                              ? 'Delayed'
+                              : 'Waiting'}
+                      </Text>
                     </View>
-                    {!isLast && <View style={[styles.connector, isDone && styles.connectorDone]} />}
-                  </View>
-
-                  <View style={[styles.stageContent, !isLast && { paddingBottom: 24 }]}>
-                    <Text style={[styles.stageName, isDone && styles.stageNameDone]}>{stage.name}</Text>
-                    <Text
-                      style={[
-                        styles.stageStatus,
-                        isDone && { color: '#1D9E75' },
-                        isActive && { color: '#185FA5' },
-                        isDelayed && { color: '#BA7517' },
-                      ]}
-                    >
-                      {isDone
-                        ? 'Completed'
-                        : isActive
-                          ? 'In progress'
-                          : isDelayed
-                            ? 'Delayed'
-                            : 'Waiting'}
-                    </Text>
-
-                    {isDelayed && stage.delayReason && (
-                      <View style={styles.delayBox}>
-                        <Text style={styles.delayText}>⚠ {stage.delayReason}</Text>
-                        {stage.delayExpectedDate && (
-                          <Text style={styles.delayExpected}>Expected: {stage.delayExpectedDate}</Text>
-                        )}
-                      </View>
-                    )}
-
-                    {isActive && (stage.tasks?.length ?? 0) > 0 && (
-                      <View style={styles.taskList}>
-                        {(stage.tasks ?? []).map((task) => (
-                          <View key={task.taskId} style={styles.taskItem}>
-                            <View style={[styles.taskCheck, task.completed && styles.taskCheckDone]}>
-                              {task.completed && <Ionicons name="checkmark" size={8} color="#fff" />}
-                            </View>
-                            <Text style={[styles.taskText, task.completed && styles.taskTextDone]}>
-                              {task.name}
-                            </Text>
-                            {task.docRequired && (
-                              <Ionicons name="document-text-outline" size={12} color="#999" />
-                            )}
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                </Animated.View>
-              );
-            })}
-          </View>
+                  </Animated.View>
+                );
+              })}
+            </View>
+          ))}
 
           <View style={styles.contactCard}>
             <Ionicons name="help-circle-outline" size={16} color="#666" />
@@ -239,10 +269,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: { fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
-  infoCard: {
+  statusCard: {
     backgroundColor: '#fff',
     marginHorizontal: 16,
     marginTop: 16,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 0.5,
+    borderColor: '#ebebeb',
+  },
+  delayBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  delayBannerText: { fontSize: 14, fontWeight: '700', color: '#BA7517' },
+  statusRow: { marginBottom: 10 },
+  statusLabel: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statusValue: { fontSize: 15, fontWeight: '600', color: '#1a1a1a', marginTop: 2 },
+  statusValueHighlight: { fontSize: 14, fontWeight: '600', color: '#185FA5', marginTop: 2 },
+  statusPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EBF3FB',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginTop: 4,
+  },
+  statusPillDelayed: { backgroundColor: '#FAEEDA' },
+  statusPillText: { fontSize: 12, fontWeight: '600', color: '#185FA5' },
+  statusPillTextDelayed: { color: '#BA7517' },
+  delayBox: {
+    backgroundColor: '#FAEEDA',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+  },
+  delayText: { fontSize: 12, color: '#92560a' },
+  delayExpected: { fontSize: 11, color: '#a0600c', marginTop: 4 },
+  infoCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginTop: 12,
     borderRadius: 16,
     padding: 16,
     borderWidth: 0.5,
@@ -263,7 +332,15 @@ const styles = StyleSheet.create({
   progressPct: { fontSize: 12, fontWeight: '600', color: '#1D9E75' },
   progressTrack: { height: 4, backgroundColor: '#e8e8e8', borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: '#1D9E75', borderRadius: 2 },
-  timeline: { paddingHorizontal: 20, paddingTop: 20 },
+  phaseBlock: { paddingHorizontal: 20, paddingTop: 16 },
+  phaseTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
   stageRow: { flexDirection: 'row', gap: 14 },
   dotColumn: { alignItems: 'center', width: 24 },
   dotWrapper: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
@@ -290,36 +367,12 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: '#EBF3FB', borderColor: '#185FA5' },
   dotDelayed: { backgroundColor: '#FAEEDA', borderColor: '#BA7517' },
   dotPending: { backgroundColor: '#f5f5f5', borderColor: '#ddd' },
-  connector: { width: 2, flex: 1, minHeight: 20, backgroundColor: '#e0e0e0', marginVertical: 3 },
+  connector: { width: 2, flex: 1, minHeight: 16, backgroundColor: '#e0e0e0', marginVertical: 3 },
   connectorDone: { backgroundColor: '#1D9E75' },
   stageContent: { flex: 1 },
   stageName: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
   stageNameDone: { color: '#555' },
   stageStatus: { fontSize: 12, color: '#aaa', marginTop: 2 },
-  delayBox: {
-    backgroundColor: '#FAEEDA',
-    borderWidth: 0.5,
-    borderColor: '#f0c06a',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 8,
-  },
-  delayText: { fontSize: 12, color: '#92560a', fontWeight: '500' },
-  delayExpected: { fontSize: 11, color: '#a0600c', marginTop: 3, opacity: 0.8 },
-  taskList: { marginTop: 8, gap: 6 },
-  taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  taskCheck: {
-    width: 14,
-    height: 14,
-    borderRadius: 3,
-    borderWidth: 1.5,
-    borderColor: '#ddd',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  taskCheckDone: { backgroundColor: '#1D9E75', borderColor: '#1D9E75' },
-  taskText: { fontSize: 12, color: '#555', flex: 1 },
-  taskTextDone: { textDecorationLine: 'line-through', color: '#aaa' },
   contactCard: {
     flexDirection: 'row',
     alignItems: 'center',

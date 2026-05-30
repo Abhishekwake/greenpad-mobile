@@ -22,12 +22,20 @@ const projectSchema = new mongoose.Schema(
         delayReason: String,
         delayExpectedDate: String,
         completedAt: Date,
+        removedTaskIds: [String],
         tasks: [
           {
             taskId: String,
+            /** Project-level overrides (custom tasks or renamed work items) */
+            name: String,
+            assignedRole: String,
+            docRequired: Boolean,
             completed: { type: Boolean, default: false },
             completedBy: String,
             completedAt: Date,
+            comments: [{ text: String, by: String, at: Date }],
+            photos: [{ url: String, caption: String, uploadedAt: Date }],
+            documents: [{ url: String, name: String, uploadedAt: Date }],
           },
         ],
       },

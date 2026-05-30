@@ -1,12 +1,23 @@
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
-const Transaction = require('../models/Transaction');
+const AdminAccount = require('../models/AdminAccount');
 const { generateOTP, storeOTP, verifyOTP, sendOTPViaSMS } = require('../utils/sendOTP');
+const { runWithTransaction, awardCoins, MILESTONE_TYPES } = require('../utils/coinService');
+const { getCoinSettings } = require('../utils/getCoinSettings');
 
 function signToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '30d',
   });
+}
+
+function signAdminToken(admin) {
+  return jwt.sign(
+    { id: admin._id, typ: 'admin', adminRole: admin.adminRole },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRE || '30d' }
+  );
 }
 
 function shouldExposeOtpInResponse() {
@@ -87,17 +98,20 @@ exports.verifyOTP = async (req, res, next) => {
         phone,
       });
 
-      await Transaction.create({
-        userId: user._id,
-        type: 'earn',
-        amount: 200,
-        description: 'Welcome bonus',
-        relatedTo: { model: 'User', id: user._id },
+      const coinCfg = await getCoinSettings();
+
+      await runWithTransaction(async (session) => {
+        await awardCoins({
+          session,
+          userId: user._id,
+          amount: coinCfg.coinsWelcomeBonus,
+          description: 'Welcome bonus',
+          relatedTo: { model: 'User', id: user._id },
+          milestoneType: MILESTONE_TYPES.WELCOME_BONUS,
+        });
       });
 
-      user.coins += 200;
-      user.totalEarned += 200;
-      await user.save();
+      user = await User.findById(user._id);
     }
 
     const token = signToken(user._id);
@@ -132,11 +146,11 @@ exports.applyReferral = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Referral code required' });
     }
 
-    const user = await User.findById(userId);
-    if (user.referredBy) {
+    const existingUser = await User.findById(userId);
+    if (existingUser.referredBy) {
       return res.status(400).json({ success: false, message: 'You have already used a referral code' });
     }
-    if (user.referralCode === referralCode) {
+    if (existingUser.referralCode === referralCode) {
       return res.status(400).json({ success: false, message: 'You cannot use your own code' });
     }
 
@@ -145,37 +159,50 @@ exports.applyReferral = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Invalid referral code' });
     }
 
-    // Award coins to the new user
-    user.referredBy = referralCode;
-    user.coins += 200;
-    user.totalEarned += 200;
-    await user.save();
+    const coinCfg = await getCoinSettings();
 
-    await Transaction.create({
-      userId: user._id,
-      type: 'earn',
-      amount: 200,
-      description: `Referral bonus (code: ${referralCode})`,
-      relatedTo: { model: 'User', id: referrer._id },
+    const result = await runWithTransaction(async (session) => {
+      const user = await User.findOneAndUpdate(
+        { _id: userId, referredBy: null },
+        { referredBy: referralCode },
+        { session, new: true }
+      );
+
+      if (!user) {
+        return { ok: false, message: 'You have already used a referral code' };
+      }
+
+      await awardCoins({
+        session,
+        userId: user._id,
+        amount: coinCfg.coinsReferralSignupReferee,
+        description: `Referral bonus (code: ${referralCode})`,
+        relatedTo: { model: 'User', id: referrer._id },
+        milestoneType: MILESTONE_TYPES.REFERRAL_SIGNUP_REFEREE,
+      });
+
+      await awardCoins({
+        session,
+        userId: referrer._id,
+        amount: coinCfg.coinsReferralSignupReferrer,
+        description: `Referral signup: ${user.name}`,
+        relatedTo: { model: 'User', id: user._id },
+        milestoneType: MILESTONE_TYPES.REFERRAL_SIGNUP_REFERRER,
+      });
+
+      return { ok: true, user, refereeCoins: coinCfg.coinsReferralSignupReferee };
     });
 
-    // Award coins to referrer
-    referrer.coins += 300;
-    referrer.totalEarned += 300;
-    await referrer.save();
+    if (!result.ok) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
 
-    await Transaction.create({
-      userId: referrer._id,
-      type: 'earn',
-      amount: 300,
-      description: `Referral signup: ${user.name}`,
-      relatedTo: { model: 'User', id: user._id },
-    });
+    const updatedUser = await User.findById(userId);
 
     res.json({
       success: true,
-      message: 'Referral code applied! +200 coins earned',
-      coins: user.coins,
+      message: `Referral code applied! +${result.refereeCoins} coins earned`,
+      coins: updatedUser.coins,
     });
   } catch (error) {
     next(error);
@@ -186,46 +213,35 @@ exports.applyReferral = async (req, res, next) => {
 exports.adminLogin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@greenpad.com').toLowerCase().trim();
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password required' });
     }
 
-    if (email.toLowerCase().trim() !== adminEmail || password !== adminPassword) {
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const admin = await AdminAccount.findOne({ email: normalizedEmail });
+
+    if (!admin || !admin.isActive) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    let admin = await User.findOne({ role: 'admin' });
-    const seedPhone = process.env.ADMIN_SEED_PHONE || '9000000001';
-
-    if (!admin) {
-      const existingPhone = await User.findOne({ phone: seedPhone });
-      if (existingPhone) {
-        existingPhone.role = 'admin';
-        existingPhone.email = adminEmail;
-        existingPhone.name = existingPhone.name || 'Admin';
-        await existingPhone.save();
-        admin = existingPhone;
-      } else {
-        admin = await User.create({
-          name: 'Admin',
-          phone: seedPhone,
-          email: adminEmail,
-          role: 'admin',
-        });
-      }
+    const passwordValid = await bcrypt.compare(String(password), admin.passwordHash);
+    if (!passwordValid) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const token = signToken(admin._id);
+    admin.lastLoginAt = new Date();
+    await admin.save();
+
+    const token = signAdminToken(admin);
 
     res.json({
       success: true,
       token,
       user: {
         name: admin.name,
-        email: admin.email || adminEmail,
+        email: admin.email,
+        adminRole: admin.adminRole,
       },
     });
   } catch (error) {

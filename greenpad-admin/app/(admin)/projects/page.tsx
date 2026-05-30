@@ -12,9 +12,19 @@ import {
   Folder,
   MapPin,
   Phone,
+  Plus,
+  Trash2,
   Zap,
 } from "lucide-react";
-import { getProject, getProjects, updateProjectStage } from "@/lib/projectApi";
+import {
+  addProjectTask,
+  deleteProjectTask,
+  getProject,
+  getProjects,
+  getRoles,
+  updateProjectStage,
+  updateProjectTask,
+} from "@/lib/projectApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +48,15 @@ type ProjectStage = {
     assignedRole: string;
     docRequired: boolean;
     completed: boolean;
+    isCustom?: boolean;
   }[];
+};
+
+type ProjectPhase = {
+  phaseId: string;
+  name: string;
+  order: number;
+  stages: ProjectStage[];
 };
 
 type Project = {
@@ -48,6 +66,7 @@ type Project = {
   address: string;
   status: string;
   currentStageId: string;
+  phases?: ProjectPhase[];
   stages: ProjectStage[];
   createdAt: string;
 };
@@ -122,7 +141,8 @@ function StageStatusBadge({ status }: { status: StageStatus }) {
 }
 
 function OverallStatusBadge({ project }: { project: Project }) {
-  const hasDelayed = project.stages.some((s) => s.status === "delayed");
+  const allStages = project.phases?.flatMap((p) => p.stages) ?? project.stages ?? [];
+  const hasDelayed = allStages.some((s) => s.status === "delayed");
   if (project.status === "completed") {
     return (
       <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
@@ -159,9 +179,18 @@ export default function ProjectsPage() {
     staleTime: 30_000,
   });
 
+  const { data: roles = [] } = useQuery({
+    queryKey: ["admin-roles"],
+    queryFn: async () => {
+      const res = await getRoles();
+      return res.data.data as { _id: string; name: string }[];
+    },
+  });
+
   const {
     data: projectDetail,
     isLoading: detailLoading,
+    isError: detailError,
     refetch: refetchDetail,
   } = useQuery({
     queryKey: ["project", selectedProject?._id],
@@ -194,6 +223,14 @@ export default function ProjectsPage() {
     return { total, active, completed, delayed };
   }, [projects]);
 
+  const invalidateProject = async () => {
+    await qc.invalidateQueries({ queryKey: ["projects"] });
+    if (selectedProject?._id) {
+      await qc.invalidateQueries({ queryKey: ["project", selectedProject._id] });
+      await refetchDetail();
+    }
+  };
+
   const stageMutation = useMutation({
     mutationFn: async ({
       id,
@@ -212,17 +249,72 @@ export default function ProjectsPage() {
     onSuccess: async () => {
       success("Stage updated");
       setStageUpdateModal(null);
-      await qc.invalidateQueries({ queryKey: ["projects"] });
-      if (selectedProject?._id) {
-        await qc.invalidateQueries({ queryKey: ["project", selectedProject._id] });
-        await refetchDetail();
-      }
+      await invalidateProject();
     },
     onError: (err: unknown) => {
       const msg = axios.isAxiosError(err)
         ? String(err.response?.data?.message || err.message)
         : "Failed to update stage";
       toastError(msg);
+    },
+  });
+
+  const taskMutation = useMutation({
+    mutationFn: async (data: {
+      projectId: string;
+      stageId: string;
+      taskId: string;
+      completed?: boolean;
+      name?: string;
+      assignedRole?: string;
+      docRequired?: boolean;
+    }) => {
+      const { projectId, stageId, taskId, ...rest } = data;
+      await updateProjectTask(projectId, { stageId, taskId, ...rest });
+    },
+    onSuccess: async () => {
+      await invalidateProject();
+    },
+    onError: (err: unknown) => {
+      toastError(
+        axios.isAxiosError(err)
+          ? String(err.response?.data?.message || err.message)
+          : "Failed to update work item"
+      );
+    },
+  });
+
+  const addTaskMutation = useMutation({
+    mutationFn: async (data: { projectId: string; stageId: string; name: string; assignedRole?: string }) => {
+      await addProjectTask(data.projectId, data);
+    },
+    onSuccess: async () => {
+      success("Work item added");
+      await invalidateProject();
+    },
+    onError: (err: unknown) => {
+      toastError(
+        axios.isAxiosError(err)
+          ? String(err.response?.data?.message || err.message)
+          : "Failed to add work item"
+      );
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (data: { projectId: string; stageId: string; taskId: string }) => {
+      await deleteProjectTask(data.projectId, data);
+    },
+    onSuccess: async () => {
+      success("Work item removed");
+      await invalidateProject();
+    },
+    onError: (err: unknown) => {
+      toastError(
+        axios.isAxiosError(err)
+          ? String(err.response?.data?.message || err.message)
+          : "Failed to remove work item"
+      );
     },
   });
 
@@ -268,10 +360,181 @@ export default function ProjectsPage() {
     });
   };
 
-  const detailProject = selectedProject;
+  const detailProject = projectDetail ?? selectedProject;
 
   if (selectedProject) {
-    const sortedStages = [...(detailProject.stages || [])].sort((a, b) => a.order - b.order);
+    const phases =
+      detailProject.phases && detailProject.phases.length > 0
+        ? detailProject.phases
+        : detailProject.stages && detailProject.stages.length > 0
+          ? [
+              {
+                phaseId: "phase_legacy",
+                name: "Workflow",
+                order: 1,
+                stages: [...detailProject.stages].sort((a, b) => a.order - b.order),
+              },
+            ]
+          : [];
+
+    const totalStages = phases.reduce((n, p) => n + p.stages.length, 0);
+
+    const renderStage = (stage: ProjectStage) => (
+      <div key={stage.stageId} className="rounded-xl border bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
+              {stage.order}
+            </span>
+            <span className="text-sm font-medium text-gray-900">{stage.name}</span>
+            {stage.visibleToCustomer ? (
+              <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">👁 Customer</span>
+            ) : (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">Internal</span>
+            )}
+          </div>
+          <StageStatusBadge status={stage.status} />
+        </div>
+
+        {stage.status === "delayed" && (stage.delayReason || stage.delayExpectedDate) && (
+          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            {stage.delayReason && <p>⚠ {stage.delayReason}</p>}
+            {stage.delayExpectedDate && <p className="mt-1 text-amber-800">Expected: {stage.delayExpectedDate}</p>}
+          </div>
+        )}
+
+        <div className="mt-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Work items</p>
+          <div className="space-y-2">
+            {stage.tasks.map((task) => (
+              <div key={task.taskId} className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={task.completed}
+                  disabled={taskMutation.isPending}
+                  onChange={(e) =>
+                    taskMutation.mutate({
+                      projectId: detailProject._id,
+                      stageId: stage.stageId,
+                      taskId: task.taskId,
+                      completed: e.target.checked,
+                    })
+                  }
+                  className="h-3.5 w-3.5 rounded border-gray-300"
+                />
+                <Input
+                  defaultValue={task.name}
+                  key={`${task.taskId}-${task.name}`}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== task.name) {
+                      taskMutation.mutate({
+                        projectId: detailProject._id,
+                        stageId: stage.stageId,
+                        taskId: task.taskId,
+                        name: v,
+                      });
+                    }
+                  }}
+                  className="h-8 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-1"
+                />
+                <select
+                  value={task.assignedRole}
+                  disabled={taskMutation.isPending}
+                  onChange={(e) =>
+                    taskMutation.mutate({
+                      projectId: detailProject._id,
+                      stageId: stage.stageId,
+                      taskId: task.taskId,
+                      assignedRole: e.target.value,
+                    })
+                  }
+                  className="max-w-[180px] rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                >
+                  {roles.length === 0 ? (
+                    <option value={task.assignedRole}>{task.assignedRole || "No role"}</option>
+                  ) : (
+                    roles.map((r) => (
+                      <option key={r._id} value={r.name}>
+                        {r.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <button
+                  type="button"
+                  title="Document required"
+                  onClick={() =>
+                    taskMutation.mutate({
+                      projectId: detailProject._id,
+                      stageId: stage.stageId,
+                      taskId: task.taskId,
+                      docRequired: !task.docRequired,
+                    })
+                  }
+                  className={cn("shrink-0", task.docRequired ? "text-blue-500" : "text-gray-300 hover:text-gray-400")}
+                >
+                  <FileText className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteTaskMutation.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Remove "${task.name}" from this project?`)) {
+                      deleteTaskMutation.mutate({
+                        projectId: detailProject._id,
+                        stageId: stage.stageId,
+                        taskId: task.taskId,
+                      });
+                    }
+                  }}
+                  className="shrink-0 text-gray-400 hover:text-red-500"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={addTaskMutation.isPending}
+            onClick={() => {
+              const name = window.prompt("Work item name");
+              if (!name?.trim()) return;
+              addTaskMutation.mutate({
+                projectId: detailProject._id,
+                stageId: stage.stageId,
+                name: name.trim(),
+                assignedRole: roles[0]?.name,
+              });
+            }}
+            className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+          >
+            <Plus className="h-3 w-3" /> Add work item
+          </button>
+        </div>
+
+        {stage.status !== "done" && (
+          <div className="mt-3 border-t pt-3">
+            <select
+              key={`${stage.stageId}-${stage.status}-${stageMutation.isPending}`}
+              defaultValue=""
+              disabled={stageMutation.isPending}
+              onChange={(e) => {
+                handleStageAction(detailProject, stage, e.target.value);
+                e.target.value = "";
+              }}
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700"
+            >
+              <option value="" disabled>Move to…</option>
+              <option value="active">Mark active</option>
+              <option value="done">Mark done</option>
+              <option value="delayed">Mark delayed</option>
+            </select>
+          </div>
+        )}
+      </div>
+    );
 
     return (
       <div className="space-y-4">
@@ -298,99 +561,45 @@ export default function ProjectsPage() {
               </p>
             </div>
             <div className="flex flex-col items-end gap-1">
-              {detailProject.stages.length > 0 ? (
+              {detailLoading && !projectDetail ? (
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500">Loading…</span>
+              ) : detailError ? (
+                <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">Failed to load</span>
+              ) : totalStages > 0 ? (
                 <OverallStatusBadge project={detailProject} />
               ) : (
-                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500">Loading…</span>
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500">No stages</span>
               )}
-              <span className="text-xs text-gray-400">
-                Project #{detailProject._id.slice(-6).toUpperCase()}
-              </span>
+              <span className="text-xs text-gray-400">Project #{detailProject._id.slice(-6).toUpperCase()}</span>
             </div>
           </div>
         </div>
 
-        {detailLoading && sortedStages.length === 0 ? (
+        {detailError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-center justify-between">
+            <p className="text-sm text-red-800">Could not load project workflow. Check API connection.</p>
+            <Button variant="outline" size="sm" onClick={() => refetchDetail()}>Retry</Button>
+          </div>
+        )}
+
+        {detailLoading && !projectDetail ? (
           <div className="space-y-3">
             <div className="h-32 animate-pulse rounded-xl bg-gray-100" />
             <div className="h-32 animate-pulse rounded-xl bg-gray-100" />
             <div className="h-32 animate-pulse rounded-xl bg-gray-100" />
           </div>
+        ) : totalStages === 0 && !detailLoading ? (
+          <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-500">
+            No workflow stages found for this project.
+          </div>
         ) : (
-          sortedStages.map((stage) => (
-            <div key={stage.stageId} className="rounded-xl border bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
-                    {stage.order}
-                  </span>
-                  <span className="text-sm font-medium text-gray-900">{stage.name}</span>
-                  {stage.visibleToCustomer ? (
-                    <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                      👁 Customer
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">Internal</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <StageStatusBadge status={stage.status} />
-                </div>
-              </div>
-
-              {stage.status === "delayed" && (stage.delayReason || stage.delayExpectedDate) && (
-                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  {stage.delayReason && <p>⚠ {stage.delayReason}</p>}
-                  {stage.delayExpectedDate && (
-                    <p className="mt-1 text-amber-800">Expected: {stage.delayExpectedDate}</p>
-                  )}
-                </div>
-              )}
-
-              {(stage.status === "active" || stage.status === "done") && stage.tasks.length > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  {stage.tasks.map((task) => (
-                    <div key={task.taskId} className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={task.completed}
-                        readOnly
-                        disabled
-                        className="h-3.5 w-3.5 rounded border-gray-300"
-                      />
-                      <span className="flex-1 text-gray-800">{task.name}</span>
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-600">
-                        {task.assignedRole}
-                      </span>
-                      {task.docRequired && (
-                        <FileText className="h-3 w-3 text-gray-400" title="Document required" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {stage.status !== "done" && (
-                <div className="mt-3 border-t pt-3">
-                  <select
-                    key={`${stage.stageId}-${stage.status}-${stageMutation.isPending}`}
-                    defaultValue=""
-                    disabled={stageMutation.isPending}
-                    onChange={(e) => {
-                      handleStageAction(detailProject, stage, e.target.value);
-                      e.target.value = "";
-                    }}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="" disabled>
-                      Move to…
-                    </option>
-                    <option value="active">Mark active</option>
-                    <option value="done">Mark done</option>
-                    <option value="delayed">Mark delayed</option>
-                  </select>
-                </div>
-              )}
+          phases.map((phase) => (
+            <div key={phase.phaseId} className="space-y-3">
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-emerald-800">
+                <span className="rounded bg-emerald-100 px-2 py-0.5">Phase {phase.order}</span>
+                {phase.name}
+              </h2>
+              <div className="space-y-3 pl-2">{phase.stages.map(renderStage)}</div>
             </div>
           ))
         )}

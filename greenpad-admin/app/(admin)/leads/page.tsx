@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Download, PanelRight } from "lucide-react";
+import { Download, PanelRight, Plus } from "lucide-react";
 import api from "@/lib/api";
 import { downloadCsv } from "@/lib/utils";
 import { adminStatusLabel, LEAD_STATUSES } from "@/lib/lead-status";
@@ -26,6 +26,7 @@ import {
   type LeadCRMState,
   type AgentOption,
 } from "@/components/crm/LeadDetailsDrawer";
+import { CreateLeadDialog } from "@/components/crm/CreateLeadDialog";
 
 type LeadsQueryData = {
   leads: LeadRow[];
@@ -42,6 +43,7 @@ export default function LeadsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<LeadRow | null>(null);
   const [crmByLead, setCrmByLead] = useState<Record<string, LeadCRMState>>({});
+  const [createOpen, setCreateOpen] = useState(false);
 
   const { data: agents = [] } = useQuery({
     queryKey: ["admin-agents"],
@@ -163,11 +165,26 @@ export default function LeadsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-semibold text-gray-900">Leads</h2>
-        <Button variant="outline" onClick={exportCsv} type="button">
-          <Download className="h-4 w-4" />
-          Export CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add lead
+          </Button>
+          <Button variant="outline" onClick={exportCsv} type="button">
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
       </div>
+
+      <CreateLeadDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={() => {
+          void qc.invalidateQueries({ queryKey: ["admin-leads"] });
+          void qc.invalidateQueries({ queryKey: ["admin-stats"] });
+        }}
+      />
 
       <Card>
         <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-end">

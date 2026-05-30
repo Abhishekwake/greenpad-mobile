@@ -31,4 +31,26 @@ export const updateRole = (id: string, data: { name: string }) =>
 
 export const deleteRole = (id: string) => api.delete(`/admin/role/${id}`);
 
+export const updateProjectTask = (
+  id: string,
+  data: {
+    stageId: string;
+    taskId: string;
+    completed?: boolean;
+    name?: string;
+    assignedRole?: string;
+    docRequired?: boolean;
+  }
+) => api.patch(`/admin/project/${id}/task`, data);
+
+export const addProjectTask = (
+  id: string,
+  data: { stageId: string; name: string; assignedRole?: string; docRequired?: boolean }
+) => api.post(`/admin/project/${id}/task`, data);
+
+export const deleteProjectTask = (
+  id: string,
+  data: { stageId: string; taskId: string }
+) => api.delete(`/admin/project/${id}/task`, { data });
+
 export const getMyProject = () => api.get("/project/my-project");

@@ -6,10 +6,9 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 
 /**
- * If nothing else matches, this host is used for physical devices (e.g. LAN IP of your PC).
- * Prefer: EXPO_PUBLIC_API_URL (.env / EAS), then app.json → expo.extra.apiBaseUrl, then dev fallbacks.
+ * Last resort when Metro host cannot be read (rare). Update if auto-detect fails.
  */
-const FALLBACK_LAN_HOST = '192.168.1.104';
+const FALLBACK_LAN_HOST = '192.168.0.153';
 
 function normalizeApiBase(url: string): string {
   const trimmed = url.trim().replace(/\/$/, '');
@@ -17,9 +16,7 @@ function normalizeApiBase(url: string): string {
   return `${trimmed}/api`;
 }
 
-function hostFromExpoDev(): string | null {
-  const raw = Constants.expoConfig?.hostUri;
-  if (!raw || typeof raw !== 'string') return null;
+function parseHostFromHostLike(raw: string): string | null {
   const host = raw.includes('://')
     ? (() => {
         try {
@@ -30,10 +27,25 @@ function hostFromExpoDev(): string | null {
       })()
     : raw.split(':')[0]?.trim() ?? null;
   if (!host || host === 'localhost' || host === '127.0.0.1') return null;
-  // Tunnel / public hosts won’t reach your local API — skip so we can fall back or use extra.
   if (host.endsWith('.exp.direct') || host.includes('ngrok')) return null;
   if (!isPrivateIpv4(host)) return null;
   return host;
+}
+
+function hostFromExpoDev(): string | null {
+  const raw = Constants.expoConfig?.hostUri;
+  if (!raw || typeof raw !== 'string') return null;
+  return parseHostFromHostLike(raw);
+}
+
+function hostFromDebugger(): string | null {
+  const raw = (Constants.expoGoConfig as { debuggerHost?: string } | null)?.debuggerHost;
+  if (!raw || typeof raw !== 'string') return null;
+  return parseHostFromHostLike(raw);
+}
+
+function resolveDevLanHost(): string | null {
+  return hostFromExpoDev() ?? hostFromDebugger();
 }
 
 function isPrivateIpv4(host: string): boolean {
@@ -45,7 +57,28 @@ function isPrivateIpv4(host: string): boolean {
 }
 
 function resolveApiBaseUrl(): string {
-  // Prefer env (EAS secrets / local .env) so you can override app.json `extra.apiBaseUrl` for local API.
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000/api';
+  }
+
+  // Android emulator → host machine (must run before .env LAN URLs)
+  if (Platform.OS === 'android' && !Device.isDevice) {
+    return 'http://10.0.2.2:5000/api';
+  }
+
+  // iOS Simulator → host machine
+  if (Platform.OS === 'ios' && !Device.isDevice) {
+    return 'http://127.0.0.1:5000/api';
+  }
+
+  // Expo Go / physical device: Metro host matches the PC LAN IP the phone can reach
+  if (__DEV__) {
+    const devHost = resolveDevLanHost();
+    if (devHost) {
+      return `http://${devHost}:5000/api`;
+    }
+  }
+
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   if (envUrl && envUrl.trim().length > 0) {
     return normalizeApiBase(envUrl);
@@ -56,23 +89,11 @@ function resolveApiBaseUrl(): string {
     return normalizeApiBase(String(extraUrl));
   }
 
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000/api';
-  }
-
-  // Android emulator → host machine
-  if (Platform.OS === 'android' && !Device.isDevice) {
-    return 'http://10.0.2.2:5000/api';
-  }
-
-  // iOS Simulator → host machine
-  if (Platform.OS === 'ios' && !Device.isDevice) {
-    return 'http://127.0.0.1:5000/api';
-  }
-
-  const devHost = hostFromExpoDev();
-  if (devHost) {
-    return `http://${devHost}:5000/api`;
+  if (__DEV__) {
+    console.warn(
+      `[GreenPad] Could not detect LAN host. Using fallback ${FALLBACK_LAN_HOST}. ` +
+        'Set EXPO_PUBLIC_API_URL in mobile-app/.env to your PC IP (same network as phone).'
+    );
   }
 
   return `http://${FALLBACK_LAN_HOST}:5000/api`;

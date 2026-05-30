@@ -24,6 +24,7 @@ import {
   ChevronDown,
   FileText,
   GripVertical,
+  Layers,
   Plus,
   Save,
   Trash2,
@@ -51,23 +52,17 @@ type Stage = {
   _expanded: boolean;
 };
 
-type Role = {
-  _id: string;
+type Phase = {
+  phaseId: string;
   name: string;
+  order: number;
+  stages: Stage[];
+  _expanded: boolean;
 };
 
-type WorkflowPayload = {
-  name: string;
-  stages: Omit<Stage, "_expanded">[];
-};
+type Role = { _id: string; name: string };
 
-function ToggleSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
       type="button"
@@ -89,6 +84,55 @@ function ToggleSwitch({
   );
 }
 
+function SortableTaskRow({
+  task,
+  roles,
+  onUpdate,
+  onDelete,
+}: {
+  task: Task;
+  roles: Role[];
+  onUpdate: (patch: Partial<Task>) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+      <GripVertical className="h-3 w-3 shrink-0 text-gray-300" />
+      <Input
+        value={task.name}
+        onChange={(e) => onUpdate({ name: e.target.value })}
+        className="flex-1 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0"
+      />
+      <select
+        value={task.assignedRole}
+        onChange={(e) => onUpdate({ assignedRole: e.target.value })}
+        className="max-w-[160px] rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+      >
+        {roles.length === 0 ? (
+          <option value="">No roles</option>
+        ) : (
+          roles.map((r) => (
+            <option key={r._id} value={r.name}>
+              {r.name}
+            </option>
+          ))
+        )}
+      </select>
+      <button
+        type="button"
+        title="Document required"
+        onClick={() => onUpdate({ docRequired: !task.docRequired })}
+        className={cn("shrink-0", task.docRequired ? "text-blue-500" : "text-gray-300 hover:text-gray-400")}
+      >
+        <FileText className="h-4 w-4" />
+      </button>
+      <button type="button" onClick={onDelete} className="shrink-0 text-gray-400 hover:text-red-500">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 function SortableStageCard({
   stage,
   roles,
@@ -98,9 +142,9 @@ function SortableStageCard({
 }: {
   stage: Stage;
   roles: Role[];
-  onUpdate: (stageId: string, patch: Partial<Stage>) => void;
-  onDelete: (stageId: string) => void;
-  onToggleExpand: (stageId: string) => void;
+  onUpdate: (patch: Partial<Stage>) => void;
+  onDelete: () => void;
+  onToggleExpand: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: stage.stageId,
@@ -113,19 +157,18 @@ function SortableStageCard({
   };
 
   const updateTask = (taskId: string, patch: Partial<Task>) => {
-    onUpdate(stage.stageId, {
+    onUpdate({
       tasks: stage.tasks.map((t) => (t.taskId === taskId ? { ...t, ...patch } : t)),
     });
   };
 
   const addTask = () => {
-    const nextIndex = stage.tasks.length + 1;
-    onUpdate(stage.stageId, {
+    onUpdate({
       tasks: [
         ...stage.tasks,
         {
-          taskId: `task_${stage.order}_${nextIndex}_${Date.now()}`,
-          name: "New task",
+          taskId: `task_${stage.order}_${Date.now()}`,
+          name: "New work item",
           assignedRole: roles[0]?.name || "",
           docRequired: false,
         },
@@ -133,34 +176,16 @@ function SortableStageCard({
     });
   };
 
-  const removeTask = (taskId: string) => {
-    onUpdate(stage.stageId, {
-      tasks: stage.tasks.filter((t) => t.taskId !== taskId),
-    });
-  };
-
-  const toggleVisibility = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onUpdate(stage.stageId, { visibleToCustomer: !stage.visibleToCustomer });
-  };
-
-  const deleteStage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm(`Delete stage "${stage.name}"?`)) {
-      onDelete(stage.stageId);
-    }
-  };
-
   return (
     <div ref={setNodeRef} style={style} className="mb-3 overflow-hidden rounded-xl border bg-white">
       <div
         role="button"
         tabIndex={0}
-        onClick={() => onToggleExpand(stage.stageId)}
+        onClick={onToggleExpand}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            onToggleExpand(stage.stageId);
+            onToggleExpand();
           }
         }}
         className="flex cursor-pointer items-center gap-3 px-4 py-3"
@@ -173,41 +198,37 @@ function SortableStageCard({
         >
           <GripVertical className="h-4 w-4" />
         </span>
-
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
           {stage.order}
         </span>
-
         <Input
           value={stage.name}
           onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onUpdate(stage.stageId, { name: e.target.value })}
+          onChange={(e) => onUpdate({ name: e.target.value })}
           className="flex-1 border-0 bg-transparent px-2 py-1 text-sm font-medium shadow-none focus-visible:bg-gray-50 focus-visible:ring-0"
         />
-
         <button
           type="button"
-          onClick={toggleVisibility}
+          onClick={(e) => {
+            e.stopPropagation();
+            onUpdate({ visibleToCustomer: !stage.visibleToCustomer });
+          }}
           className={cn(
             "shrink-0 rounded-full px-3 py-1 text-xs font-medium",
-            stage.visibleToCustomer
-              ? "bg-green-100 text-green-700"
-              : "bg-gray-100 text-gray-500"
+            stage.visibleToCustomer ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
           )}
         >
           {stage.visibleToCustomer ? "👁 Customer" : "Internal"}
         </button>
-
         <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-gray-400 transition-transform",
-            stage._expanded && "rotate-180"
-          )}
+          className={cn("h-4 w-4 shrink-0 text-gray-400 transition-transform", stage._expanded && "rotate-180")}
         />
-
         <button
           type="button"
-          onClick={deleteStage}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (window.confirm(`Delete stage "${stage.name}"?`)) onDelete();
+          }}
           className="shrink-0 text-red-400 hover:text-red-600"
         >
           <Trash2 className="h-4 w-4" />
@@ -216,72 +237,27 @@ function SortableStageCard({
 
       {stage._expanded && (
         <div className="border-t px-4 pb-4">
-          <p className="mb-2 mt-3 text-xs font-medium uppercase tracking-wide text-gray-400">Tasks</p>
-
+          <p className="mb-2 mt-3 text-xs font-medium uppercase tracking-wide text-gray-400">Work items</p>
           {stage.tasks.length === 0 ? (
-            <p className="mb-2 text-xs text-gray-400">No tasks yet.</p>
+            <p className="mb-2 text-xs text-gray-400">No work items yet.</p>
           ) : (
             stage.tasks.map((task) => (
-              <div
+              <SortableTaskRow
                 key={task.taskId}
-                className="mb-2 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2"
-              >
-                <GripVertical className="h-3 w-3 shrink-0 text-gray-300" />
-                <Input
-                  value={task.name}
-                  onChange={(e) => updateTask(task.taskId, { name: e.target.value })}
-                  className="flex-1 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0"
-                />
-                <select
-                  value={task.assignedRole}
-                  onChange={(e) => updateTask(task.taskId, { assignedRole: e.target.value })}
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {roles.length === 0 ? (
-                    <option value="">No roles</option>
-                  ) : (
-                    roles.map((role) => (
-                      <option key={role._id} value={role.name}>
-                        {role.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <button
-                  type="button"
-                  title="Toggle document required"
-                  onClick={() => updateTask(task.taskId, { docRequired: !task.docRequired })}
-                  className={cn(
-                    "shrink-0",
-                    task.docRequired ? "text-blue-500" : "text-gray-300 hover:text-gray-400"
-                  )}
-                >
-                  <FileText className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeTask(task.taskId)}
-                  className="shrink-0 text-gray-400 hover:text-red-500"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+                task={task}
+                roles={roles}
+                onUpdate={(patch) => updateTask(task.taskId, patch)}
+                onDelete={() => onUpdate({ tasks: stage.tasks.filter((t) => t.taskId !== task.taskId) })}
+              />
             ))
           )}
-
-          <button
-            type="button"
-            onClick={addTask}
-            className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-          >
-            <Plus className="h-3 w-3" />
-            Add task
+          <button type="button" onClick={addTask} className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
+            <Plus className="h-3 w-3" /> Add work item
           </button>
-
           <div className="mt-3 flex items-center gap-2 border-t pt-3">
             <ToggleSwitch
               checked={stage.visibleToCustomer}
-              onChange={(checked) => onUpdate(stage.stageId, { visibleToCustomer: checked })}
+              onChange={(checked) => onUpdate({ visibleToCustomer: checked })}
             />
             <span className="text-sm text-gray-600">Visible to customer</span>
           </div>
@@ -291,23 +267,143 @@ function SortableStageCard({
   );
 }
 
-export default function WorkflowPage() {
-  const qc = useQueryClient();
-  const { success, error: toastError } = useToast();
-  const [stages, setStages] = useState<Stage[]>([]);
-  const [workflowName, setWorkflowName] = useState("Default Solar Workflow");
-  const initializedRef = useRef(false);
+function SortablePhaseBlock({
+  phase,
+  roles,
+  onUpdate,
+  onDelete,
+  onStageDragEnd,
+}: {
+  phase: Phase;
+  roles: Role[];
+  onUpdate: (patch: Partial<Phase>) => void;
+  onDelete: () => void;
+  onStageDragEnd: (phaseId: string, activeId: string, overId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: phase.phaseId,
+  });
 
-  const sensors = useSensors(
+  const stageSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const { data: workflowData, isLoading: workflowLoading, isError: workflowError, refetch } = useQuery({
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.85 : 1,
+  };
+
+  const updateStage = (stageId: string, patch: Partial<Stage>) => {
+    onUpdate({
+      stages: phase.stages.map((s) => (s.stageId === stageId ? { ...s, ...patch } : s)),
+    });
+  };
+
+  const addStage = () => {
+    const next = phase.stages.length + 1;
+    onUpdate({
+      stages: [
+        ...phase.stages,
+        {
+          stageId: `stage_${Date.now()}`,
+          name: "New Stage",
+          order: next,
+          visibleToCustomer: true,
+          tasks: [],
+          _expanded: true,
+        },
+      ],
+    });
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="mb-4 overflow-hidden rounded-xl border-2 border-emerald-100 bg-white">
+      <div className="flex items-center gap-3 bg-emerald-50 px-4 py-3">
+        <span
+          className="cursor-grab text-emerald-400 hover:text-emerald-600 active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-5 w-5" />
+        </span>
+        <Layers className="h-5 w-5 text-emerald-600" />
+        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
+          Phase {phase.order}
+        </span>
+        <Input
+          value={phase.name}
+          onChange={(e) => onUpdate({ name: e.target.value })}
+          className="flex-1 border-0 bg-transparent px-2 py-1 text-base font-semibold shadow-none focus-visible:bg-white focus-visible:ring-0"
+        />
+        <button type="button" onClick={() => onUpdate({ _expanded: !phase._expanded })}>
+          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", phase._expanded && "rotate-180")} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm(`Delete phase "${phase.name}"?`)) onDelete();
+          }}
+          className="text-red-400 hover:text-red-600"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      {phase._expanded && (
+        <div className="border-t p-4">
+          <DndContext
+            sensors={stageSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(e) => {
+              const { active, over } = e;
+              if (over && active.id !== over.id) {
+                onStageDragEnd(phase.phaseId, String(active.id), String(over.id));
+              }
+            }}
+          >
+            <SortableContext items={phase.stages.map((s) => s.stageId)} strategy={verticalListSortingStrategy}>
+              {phase.stages.map((stage) => (
+                <SortableStageCard
+                  key={stage.stageId}
+                  stage={stage}
+                  roles={roles}
+                  onUpdate={(patch) => updateStage(stage.stageId, patch)}
+                  onDelete={() => onUpdate({ stages: phase.stages.filter((s) => s.stageId !== stage.stageId) })}
+                  onToggleExpand={() =>
+                    updateStage(stage.stageId, { _expanded: !stage._expanded })
+                  }
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+          <Button variant="outline" size="sm" onClick={addStage}>
+            <Plus className="h-3.5 w-3.5" /> Add stage
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function WorkflowPage() {
+  const qc = useQueryClient();
+  const { success, error: toastError } = useToast();
+  const [phases, setPhases] = useState<Phase[]>([]);
+  const [workflowName, setWorkflowName] = useState("Default Solar Workflow");
+  const initializedRef = useRef(false);
+
+  const phaseSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const { data: workflowData, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin-workflow"],
     queryFn: async () => {
       const res = await getWorkflow();
-      return res.data.data as WorkflowPayload;
+      return res.data.data as { name: string; phases?: Phase[]; stages?: Stage[] };
     },
   });
 
@@ -322,34 +418,56 @@ export default function WorkflowPage() {
   useEffect(() => {
     if (workflowData && !initializedRef.current) {
       setWorkflowName(workflowData.name || "Default Solar Workflow");
-      setStages(
-        (workflowData.stages || [])
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map((s) => ({
-            ...s,
-            tasks: s.tasks || [],
-            _expanded: false,
-          }))
-      );
+      let loaded: Phase[] = [];
+      if (workflowData.phases?.length) {
+        loaded = workflowData.phases.map((p) => ({
+          ...p,
+          _expanded: true,
+          stages: (p.stages || [])
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((s) => ({ ...s, tasks: s.tasks || [], _expanded: false })),
+        }));
+      } else if (workflowData.stages?.length) {
+        loaded = [
+          {
+            phaseId: "phase_legacy",
+            name: "Workflow",
+            order: 1,
+            _expanded: true,
+            stages: workflowData.stages.map((s) => ({ ...s, tasks: s.tasks || [], _expanded: false })),
+          },
+        ];
+      }
+      setPhases(loaded);
       initializedRef.current = true;
     }
   }, [workflowData]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      await saveWorkflow({
         name: workflowName,
-        stages: stages.map((stage, index) => {
-          const { _expanded, ...rest } = stage;
-          void _expanded;
-          return {
-            ...rest,
-            order: index + 1,
-          };
-        }),
-      };
-      await saveWorkflow(payload);
+        phases: phases.map((phase, pi) => ({
+          phaseId: phase.phaseId,
+          name: phase.name,
+          order: pi + 1,
+          stages: phase.stages.map((stage, si) => {
+            const { _expanded, ...rest } = stage;
+            void _expanded;
+            return {
+              ...rest,
+              order: si + 1,
+              tasks: rest.tasks.map((t) => ({
+                taskId: t.taskId,
+                name: t.name,
+                assignedRole: t.assignedRole,
+                docRequired: t.docRequired,
+              })),
+            };
+          }),
+        })),
+      });
     },
     onSuccess: async () => {
       success("Workflow saved! New projects will use this template.");
@@ -357,81 +475,54 @@ export default function WorkflowPage() {
       await qc.invalidateQueries({ queryKey: ["admin-workflow"] });
     },
     onError: (err: unknown) => {
-      const msg = axios.isAxiosError(err)
-        ? String(err.response?.data?.message || err.message)
-        : "Failed to save workflow";
-      toastError(msg);
+      toastError(
+        axios.isAxiosError(err)
+          ? String(err.response?.data?.message || err.message)
+          : "Failed to save workflow"
+      );
     },
   });
 
-  const updateStage = (stageId: string, patch: Partial<Stage>) => {
-    setStages((prev) =>
-      prev.map((s) => (s.stageId === stageId ? { ...s, ...patch } : s))
-    );
-  };
-
-  const deleteStage = (stageId: string) => {
-    setStages((prev) =>
-      prev
-        .filter((s) => s.stageId !== stageId)
-        .map((s, index) => ({ ...s, order: index + 1 }))
-    );
-  };
-
-  const toggleExpand = (stageId: string) => {
-    setStages((prev) =>
-      prev.map((s) => (s.stageId === stageId ? { ...s, _expanded: !s._expanded } : s))
-    );
-  };
-
-  const addStage = () => {
-    const nextOrder = stages.length + 1;
-    setStages((prev) => [
-      ...prev,
-      {
-        stageId: `stage_${nextOrder}_${Date.now()}`,
-        name: "New Stage",
-        order: nextOrder,
-        visibleToCustomer: true,
-        tasks: [],
-        _expanded: true,
-      },
-    ]);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handlePhaseDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-
-    setStages((prev) => {
-      const oldIndex = prev.findIndex((s) => s.stageId === active.id);
-      const newIndex = prev.findIndex((s) => s.stageId === over.id);
+    setPhases((prev) => {
+      const oldIndex = prev.findIndex((p) => p.phaseId === active.id);
+      const newIndex = prev.findIndex((p) => p.phaseId === over.id);
       if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex).map((s, index) => ({
-        ...s,
-        order: index + 1,
-      }));
+      return arrayMove(prev, oldIndex, newIndex).map((p, i) => ({ ...p, order: i + 1 }));
     });
   };
 
-  if (workflowLoading) {
+  const handleStageDragEnd = (phaseId: string, activeId: string, overId: string) => {
+    setPhases((prev) =>
+      prev.map((p) => {
+        if (p.phaseId !== phaseId) return p;
+        const oldIndex = p.stages.findIndex((s) => s.stageId === activeId);
+        const newIndex = p.stages.findIndex((s) => s.stageId === overId);
+        if (oldIndex === -1 || newIndex === -1) return p;
+        return {
+          ...p,
+          stages: arrayMove(p.stages, oldIndex, newIndex).map((s, i) => ({ ...s, order: i + 1 })),
+        };
+      })
+    );
+  };
+
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <div className="h-10 w-64 animate-pulse rounded-lg bg-gray-200" />
-        <div className="h-16 animate-pulse rounded-lg bg-amber-100" />
-        <div className="h-24 animate-pulse rounded-xl bg-gray-100" />
-        <div className="h-24 animate-pulse rounded-xl bg-gray-100" />
+        <div className="h-32 animate-pulse rounded-xl bg-gray-100" />
       </div>
     );
   }
 
-  if (workflowError) {
+  if (isError) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
         <p className="text-sm text-red-800">Failed to load workflow template.</p>
-        <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
-          Retry
-        </Button>
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>Retry</Button>
       </div>
     );
   }
@@ -442,7 +533,7 @@ export default function WorkflowPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Workflow builder</h1>
           <p className="text-sm text-gray-500">
-            Customize stages and tasks — changes apply to all new projects
+            Drag phases &amp; stages · edit work items · assign teams · set customer visibility
           </p>
         </div>
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
@@ -451,36 +542,48 @@ export default function WorkflowPage() {
         </Button>
       </div>
 
-      <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        ⚠ Changes only affect new projects. Existing projects keep their current stage snapshot.
+      <div className="mb-4">
+        <label className="mb-1 block text-xs font-medium text-gray-500">Template name</label>
+        <Input value={workflowName} onChange={(e) => setWorkflowName(e.target.value)} className="max-w-md" />
       </div>
 
-      <Button variant="outline" className="mb-4" onClick={addStage}>
-        <Plus className="h-4 w-4" />
-        Add stage
+      <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        ⚠ Template changes apply to <strong>new projects</strong> only. Edit work items on an open project to customize that customer.
+      </div>
+
+      <Button
+        variant="outline"
+        className="mb-4"
+        onClick={() =>
+          setPhases((prev) => [
+            ...prev,
+            { phaseId: `phase_${Date.now()}`, name: "New Phase", order: prev.length + 1, stages: [], _expanded: true },
+          ])
+        }
+      >
+        <Plus className="h-4 w-4" /> Add phase
       </Button>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext
-          items={stages.map((s) => s.stageId)}
-          strategy={verticalListSortingStrategy}
-        >
-          {stages.map((stage) => (
-            <SortableStageCard
-              key={stage.stageId}
-              stage={stage}
+      <DndContext sensors={phaseSensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
+        <SortableContext items={phases.map((p) => p.phaseId)} strategy={verticalListSortingStrategy}>
+          {phases.map((phase) => (
+            <SortablePhaseBlock
+              key={phase.phaseId}
+              phase={phase}
               roles={roles}
-              onUpdate={updateStage}
-              onDelete={deleteStage}
-              onToggleExpand={toggleExpand}
+              onUpdate={(patch) =>
+                setPhases((prev) => prev.map((p) => (p.phaseId === phase.phaseId ? { ...p, ...patch } : p)))
+              }
+              onDelete={() => setPhases((prev) => prev.filter((p) => p.phaseId !== phase.phaseId))}
+              onStageDragEnd={handleStageDragEnd}
             />
           ))}
         </SortableContext>
       </DndContext>
 
-      {stages.length === 0 && (
+      {phases.length === 0 && (
         <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-500">
-          No stages yet. Click &quot;Add stage&quot; to get started.
+          No phases yet. Click &quot;Add phase&quot; to get started.
         </div>
       )}
     </div>

@@ -8,6 +8,8 @@ import {
   RefreshControl,
   FlatList,
   Dimensions,
+  Linking,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,7 +33,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import Toast from 'react-native-toast-message';
 import { COLORS, SIZES } from '../../constants';
-import { userService, leadService, videoService } from '../../services';
+import { userService, leadService, videoService, settingsService, DEFAULT_SUPPORT_CONTACT } from '../../services';
 import { fetchMyProject } from '../../services/project.service';
 import type { Lead } from '../../services/lead.service';
 import type { Video } from '../../services/video.service';
@@ -362,6 +364,7 @@ const HomeScreen: React.FC = () => {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [supportContact, setSupportContact] = useState(DEFAULT_SUPPORT_CONTACT);
   const { userData, updateCoins } = useAuthStore();
   const loadingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -387,11 +390,13 @@ const HomeScreen: React.FC = () => {
         }, LOADING_TIMEOUT);
       }
 
-      const [data, leads, videosData] = await Promise.all([
+      const [data, leads, videosData, contact] = await Promise.all([
         userService.getDashboard(),
         leadService.getMyLeads(),
         videoService.getVideos().catch(() => []),
+        settingsService.getContact().catch(() => DEFAULT_SUPPORT_CONTACT),
       ]);
+      setSupportContact(contact);
       
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
@@ -456,6 +461,32 @@ const HomeScreen: React.FC = () => {
     [tabNavigation]
   );
 
+  const handleContactUs = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const wa = supportContact.supportWhatsApp || DEFAULT_SUPPORT_CONTACT.supportWhatsApp;
+    const phone = supportContact.supportPhone || DEFAULT_SUPPORT_CONTACT.supportPhone;
+    Alert.alert('Contact GreenPad', 'How would you like to reach our sales team?', [
+      {
+        text: 'WhatsApp',
+        onPress: () => {
+          const url = `https://wa.me/91${wa}?text=${encodeURIComponent('Hi GreenPad, I need help with solar.')}`;
+          Linking.openURL(url).catch(() => {
+            Toast.show({ type: 'error', text1: 'Could not open WhatsApp' });
+          });
+        },
+      },
+      {
+        text: 'Call',
+        onPress: () => {
+          Linking.openURL(`tel:+91${phone}`).catch(() => {
+            Toast.show({ type: 'error', text1: 'Could not start call' });
+          });
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [supportContact]);
+
   const siteVisitCard: ActionItem = useMemo(() => {
     if (activeLead) {
       return {
@@ -497,10 +528,10 @@ const HomeScreen: React.FC = () => {
         title: 'Contact Us',
         icon: 'chatbubble-ellipses',
         gradient: ['#8B5CF6', '#6D28D9'],
-        onPress: () => {},
+        onPress: handleContactUs,
       },
     ],
-    [navigateToStack, tabNavigation, siteVisitCard]
+    [navigateToStack, tabNavigation, siteVisitCard, handleContactUs]
   );
 
   const onRefresh = useCallback(async () => {
@@ -582,7 +613,8 @@ const HomeScreen: React.FC = () => {
               <View>
                 <Text style={styles.projectTrackTitle}>Track installation</Text>
                 <Text style={styles.projectTrackSub}>
-                  {activeProject.stages?.find((s: { status: string; name: string }) => s.status === 'active')?.name ||
+                  {activeProject.customerView?.currentStage ||
+                    activeProject.stages?.find((s) => s.status === 'active')?.name ||
                     'In progress'}
                 </Text>
               </View>

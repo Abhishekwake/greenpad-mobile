@@ -114,6 +114,17 @@ export default function RewardsPage() {
     onError: () => error("Save failed"),
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      await api.put(`/admin/reward/${id}`, { isActive });
+    },
+    onSuccess: () => {
+      success("Reward visibility updated");
+      qc.invalidateQueries({ queryKey: ["admin-rewards"] });
+    },
+    onError: () => error("Update failed"),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/admin/reward/${id}`);
@@ -157,8 +168,30 @@ export default function RewardsPage() {
                   <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
                     {r.stock == null ? "Unlimited" : `Stock: ${r.stock}`}
                   </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-xs font-medium",
+                      r.isActive !== false ? "bg-emerald-50 text-emerald-800" : "bg-gray-200 text-gray-600"
+                    )}
+                  >
+                    {r.isActive !== false ? "Visible in app" : "Hidden"}
+                  </span>
                 </div>
-                <div className="mt-4 flex justify-end gap-2">
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    disabled={toggleActiveMutation.isPending}
+                    onClick={() =>
+                      toggleActiveMutation.mutate({
+                        id: r._id,
+                        isActive: r.isActive === false,
+                      })
+                    }
+                  >
+                    {r.isActive === false ? "Show in store" : "Hide from store"}
+                  </Button>
                   <Button variant="outline" size="icon" type="button" onClick={() => openEdit(r)}>
                     <Pencil className="h-4 w-4" />
                   </Button>

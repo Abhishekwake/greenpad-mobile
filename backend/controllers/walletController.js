@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
-const Reward = require('../models/Reward');
+const { runWithTransaction, atomicRedeem } = require('../utils/coinService');
 
 // GET /api/wallet/balance
 exports.getBalance = async (req, res, next) => {
@@ -65,46 +65,22 @@ exports.redeemCoins = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Reward ID required' });
     }
 
-    const reward = await Reward.findById(rewardId);
-    if (!reward || !reward.isActive) {
-      return res.status(404).json({ success: false, message: 'Reward not found or inactive' });
-    }
-    if (reward.stock !== null && reward.stock <= 0) {
-      return res.status(400).json({ success: false, message: 'Reward out of stock' });
-    }
+    const result = await runWithTransaction(async (session) =>
+      atomicRedeem({ session, userId: req.user._id, rewardId })
+    );
 
-    const user = await User.findById(req.user._id);
-    if (user.coins < reward.coinsRequired) {
-      return res.status(400).json({
-        success: false,
-        message: `Insufficient coins. You have ${user.coins}, need ${reward.coinsRequired}`,
-      });
+    if (!result.ok) {
+      const status =
+        result.code === 'INSUFFICIENT_COINS' || result.code === 'OUT_OF_STOCK' ? 400 : 404;
+      return res.status(status).json({ success: false, message: result.message });
     }
-
-    user.coins -= reward.coinsRequired;
-    user.totalRedeemed += reward.coinsRequired;
-    await user.save();
-
-    if (reward.stock !== null) {
-      reward.stock -= 1;
-      await reward.save();
-    }
-
-    const transaction = await Transaction.create({
-      userId: user._id,
-      type: 'redeem',
-      amount: -reward.coinsRequired,
-      description: `Redeemed: ${reward.title}`,
-      relatedTo: { model: 'Reward', id: reward._id },
-      status: 'pending',
-    });
 
     res.json({
       success: true,
-      message: `Successfully redeemed ${reward.title}`,
+      message: `Successfully redeemed ${result.reward.title}`,
       data: {
-        coins: user.coins,
-        transaction,
+        coins: result.user.coins,
+        transaction: result.transaction,
       },
     });
   } catch (error) {

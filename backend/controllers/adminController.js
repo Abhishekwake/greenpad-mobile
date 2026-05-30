@@ -5,7 +5,13 @@ const Transaction = require('../models/Transaction');
 const Reward = require('../models/Reward');
 const Agent = require('../models/Agent');
 const AppSettings = require('../models/AppSettings');
-const { getCoinSettings } = require('../utils/getCoinSettings');
+const {
+  getCoinSettings,
+  pickAdminSettings,
+  ALL_ADMIN_SETTING_KEYS,
+} = require('../utils/getCoinSettings');
+const { notifyLeadStatusChange } = require('../utils/pushNotifications');
+const { runWithTransaction, awardCoins, MILESTONE_TYPES } = require('../utils/coinService');
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -166,85 +172,186 @@ exports.updateLeadStatus = async (req, res, next) => {
     }
 
     const previousStatus = lead.status;
-    // Capture referrer id before save — Mongoose may depopulate `userId` after save(), which
-    // would leave `lead.userId` as an ObjectId and break `referrer.coins` updates.
     const rawReferrer = lead.userId;
     const referrerId =
       rawReferrer && typeof rawReferrer === 'object' && rawReferrer._id
         ? rawReferrer._id
         : rawReferrer;
 
-    lead.status = status;
-    await lead.save();
-
     const shouldAwardVisit =
       status === 'visited' && previousStatus !== 'visited' && previousStatus !== 'lost';
     const shouldAwardConvert =
       status === 'converted' && previousStatus !== 'converted' && previousStatus !== 'lost';
-    // If admin marks "converted" without a separate "visited" step, still grant the visit milestone once.
     const shouldAwardVisitOnConvert =
       shouldAwardConvert && previousStatus !== 'visited' && previousStatus !== 'lost';
 
-    if (status !== previousStatus && referrerId) {
-      const referrer = await User.findById(referrerId);
-      if (!referrer) {
-        return res.json({
-          success: true,
-          message: `Lead status updated to ${status}`,
-          data: lead,
-          warning: 'Referring user not found; no coins were awarded',
-        });
-      }
+    let warning;
 
-      const coinCfg = await getCoinSettings();
-      const visitCoins = coinCfg.coinsLeadVisited;
-      const visitOnConvertCoins = coinCfg.coinsLeadVisitMilestoneOnConvert;
-      const convertCoins = coinCfg.coinsLeadConverted;
+    if (status !== previousStatus) {
+      await runWithTransaction(async (session) => {
+        lead.status = status;
+        await lead.save({ session });
 
-      if (shouldAwardVisit) {
-        referrer.coins += visitCoins;
-        referrer.totalEarned += visitCoins;
-        await referrer.save();
-        await Transaction.create({
-          userId: referrer._id,
-          type: 'earn',
-          amount: visitCoins,
-          description: `Lead visited: ${lead.name}`,
-          relatedTo: { model: 'Lead', id: lead._id },
-        });
-      }
+        if (!referrerId) {
+          return;
+        }
 
-      if (shouldAwardVisitOnConvert) {
-        referrer.coins += visitOnConvertCoins;
-        referrer.totalEarned += visitOnConvertCoins;
-        await referrer.save();
-        await Transaction.create({
-          userId: referrer._id,
-          type: 'earn',
-          amount: visitOnConvertCoins,
-          description: `Lead visited: ${lead.name}`,
-          relatedTo: { model: 'Lead', id: lead._id },
-        });
-      }
+        const referrer = await User.findById(referrerId).session(session);
+        if (!referrer) {
+          warning = 'Referring user not found; no coins were awarded';
+          return;
+        }
 
-      if (shouldAwardConvert) {
-        referrer.coins += convertCoins;
-        referrer.totalEarned += convertCoins;
-        await referrer.save();
-        await Transaction.create({
-          userId: referrer._id,
-          type: 'earn',
-          amount: convertCoins,
-          description: `Installation confirmed: ${lead.name}`,
-          relatedTo: { model: 'Lead', id: lead._id },
-        });
-      }
+        const coinCfg = await getCoinSettings();
+        const visitCoins = coinCfg.coinsLeadVisited;
+        const visitOnConvertCoins = coinCfg.coinsLeadVisitMilestoneOnConvert;
+        const convertCoins = coinCfg.coinsLeadConverted;
+
+        if (shouldAwardVisit) {
+          await awardCoins({
+            session,
+            userId: referrer._id,
+            amount: visitCoins,
+            description: `Lead visited: ${lead.name}`,
+            relatedTo: { model: 'Lead', id: lead._id },
+            milestoneType: MILESTONE_TYPES.LEAD_VISITED,
+          });
+        }
+
+        if (shouldAwardVisitOnConvert) {
+          await awardCoins({
+            session,
+            userId: referrer._id,
+            amount: visitOnConvertCoins,
+            description: `Lead visited: ${lead.name}`,
+            relatedTo: { model: 'Lead', id: lead._id },
+            milestoneType: MILESTONE_TYPES.LEAD_VISIT_ON_CONVERT,
+          });
+        }
+
+        if (shouldAwardConvert) {
+          await awardCoins({
+            session,
+            userId: referrer._id,
+            amount: convertCoins,
+            description: `Installation confirmed: ${lead.name}`,
+            relatedTo: { model: 'Lead', id: lead._id },
+            milestoneType: MILESTONE_TYPES.LEAD_CONVERTED,
+          });
+        }
+      });
+    }
+
+    if (status !== previousStatus) {
+      notifyLeadStatusChange(lead, previousStatus, status).catch((err) => {
+        console.error('[push] lead status notify failed:', err?.message || err);
+      });
     }
 
     res.json({
       success: true,
       message: `Lead status updated to ${status}`,
       data: lead,
+      ...(warning && { warning }),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/admin/lead — walk-in / manual lead (no booking coins)
+exports.createLeadAdmin = async (req, res, next) => {
+  try {
+    const {
+      userId,
+      name,
+      phone,
+      address,
+      propertyType,
+      leadType = 'self',
+      notes,
+      preferredDate,
+      timeSlot,
+      relationshipNote,
+    } = req.body;
+
+    if (!userId || !name || !phone || !address) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId, name, phone, and address are required',
+      });
+    }
+    if (!/^\d{10}$/.test(String(phone))) {
+      return res.status(400).json({ success: false, message: 'Valid 10-digit phone required' });
+    }
+
+    const referrer = await User.findById(userId);
+    if (!referrer) {
+      return res.status(404).json({ success: false, message: 'Referring user not found' });
+    }
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const duplicate = await Lead.findOne({
+      phone: String(phone),
+      status: { $ne: 'lost' },
+      createdAt: { $gte: thirtyDaysAgo },
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        message: 'This phone already has an active visit booked in the last 30 days',
+      });
+    }
+
+    const type = leadType === 'referral' ? 'referral' : 'self';
+
+    const lead = await Lead.create({
+      userId: referrer._id,
+      leadType: type,
+      relationshipNote: relationshipNote ? String(relationshipNote).slice(0, 200) : '',
+      name: String(name).trim(),
+      phone: String(phone),
+      address: String(address).trim(),
+      propertyType: propertyType || 'Residential',
+      preferredDate: preferredDate || undefined,
+      timeSlot: timeSlot || undefined,
+      notes: notes ? String(notes).slice(0, 500) : '',
+      status: 'pending',
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Lead created',
+      data: lead,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// PATCH /api/admin/user/:id — deactivate / reactivate
+exports.updateUserActive = async (req, res, next) => {
+  try {
+    const { isActive } = req.body;
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'isActive must be true or false' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (user.role === 'admin') {
+      return res.status(400).json({ success: false, message: 'Cannot deactivate legacy admin user records' });
+    }
+
+    user.isActive = isActive;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: isActive ? 'User reactivated' : 'User deactivated',
+      data: { _id: user._id, isActive: user.isActive },
     });
   } catch (error) {
     next(error);
@@ -549,9 +656,11 @@ exports.updateRedemptionStatus = async (req, res, next) => {
     }
 
     if (status === 'completed') {
-      tx.status = 'completed';
-      tx.fulfilledAt = new Date();
-      await tx.save();
+      await runWithTransaction(async (session) => {
+        tx.status = 'completed';
+        tx.fulfilledAt = new Date();
+        await tx.save({ session });
+      });
       return res.json({
         success: true,
         message: 'Marked as fulfilled',
@@ -559,30 +668,52 @@ exports.updateRedemptionStatus = async (req, res, next) => {
       });
     }
 
-    const coins = Math.abs(Number(tx.amount) || 0);
-    const user = await User.findById(tx.userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found for this redemption' });
-    }
-    user.coins += coins;
-    user.totalRedeemed = Math.max(0, (user.totalRedeemed || 0) - coins);
-    await user.save();
-
-    if (tx.relatedTo?.model === 'Reward' && tx.relatedTo.id) {
-      const reward = await Reward.findById(tx.relatedTo.id);
-      if (reward && reward.stock != null) {
-        reward.stock += 1;
-        await reward.save();
+    const refundResult = await runWithTransaction(async (session) => {
+      const freshTx = await Transaction.findById(id).session(session);
+      if (!freshTx || freshTx.type !== 'redeem' || freshTx.status !== 'pending') {
+        return { ok: false, message: 'Redemption not found or already updated' };
       }
-    }
 
-    tx.status = 'cancelled';
-    await tx.save();
+      const coins = Math.abs(Number(freshTx.amount) || 0);
+      const user = await User.findById(freshTx.userId).session(session);
+      if (!user) {
+        return { ok: false, message: 'User not found for this redemption' };
+      }
+
+      await User.findByIdAndUpdate(
+        user._id,
+        {
+          $inc: { coins },
+          $set: { totalRedeemed: Math.max(0, (user.totalRedeemed || 0) - coins) },
+        },
+        { session }
+      );
+
+      if (freshTx.relatedTo?.model === 'Reward' && freshTx.relatedTo.id) {
+        const reward = await Reward.findById(freshTx.relatedTo.id).session(session);
+        if (reward && reward.stock != null) {
+          await Reward.findByIdAndUpdate(
+            freshTx.relatedTo.id,
+            { $inc: { stock: 1 } },
+            { session }
+          );
+        }
+      }
+
+      freshTx.status = 'cancelled';
+      await freshTx.save({ session });
+
+      return { ok: true, transaction: freshTx, coinsRefunded: coins };
+    });
+
+    if (!refundResult.ok) {
+      return res.status(404).json({ success: false, message: refundResult.message });
+    }
 
     return res.json({
       success: true,
       message: 'Redemption cancelled and coins refunded',
-      data: { transaction: tx, coinsRefunded: coins },
+      data: { transaction: refundResult.transaction, coinsRefunded: refundResult.coinsRefunded },
     });
   } catch (error) {
     next(error);
@@ -597,14 +728,7 @@ exports.getCoinSettingsAdmin = async (req, res, next) => {
     const doc = await getCoinSettings();
     res.json({
       success: true,
-      data: {
-        coinsSelfBook: doc.coinsSelfBook,
-        coinsReferralBook: doc.coinsReferralBook,
-        coinsLeadVisited: doc.coinsLeadVisited,
-        coinsLeadVisitMilestoneOnConvert: doc.coinsLeadVisitMilestoneOnConvert,
-        coinsLeadConverted: doc.coinsLeadConverted,
-        updatedAt: doc.updatedAt,
-      },
+      data: pickAdminSettings(doc),
     });
   } catch (error) {
     next(error);
@@ -614,20 +738,34 @@ exports.getCoinSettingsAdmin = async (req, res, next) => {
 // PUT /api/admin/coin-settings
 exports.putCoinSettingsAdmin = async (req, res, next) => {
   try {
-    const keys = [
-      'coinsSelfBook',
-      'coinsReferralBook',
-      'coinsLeadVisited',
-      'coinsLeadVisitMilestoneOnConvert',
-      'coinsLeadConverted',
-    ];
     const updates = {};
-    for (const k of keys) {
-      if (req.body[k] !== undefined && req.body[k] !== null && req.body[k] !== '') {
-        const n = Number(req.body[k]);
-        if (Number.isNaN(n) || n < 0 || n > 500000) {
-          return res.status(400).json({ success: false, message: `Invalid value for ${k}` });
+    for (const k of ALL_ADMIN_SETTING_KEYS) {
+      if (req.body[k] === undefined || req.body[k] === null || req.body[k] === '') {
+        continue;
+      }
+      if (k === 'supportWhatsApp' || k === 'supportPhone') {
+        const digits = String(req.body[k]).replace(/\D/g, '').slice(-10);
+        if (!/^\d{10}$/.test(digits)) {
+          return res.status(400).json({ success: false, message: `${k} must be a 10-digit number` });
         }
+        updates[k] = digits;
+        continue;
+      }
+      const n = Number(req.body[k]);
+      if (Number.isNaN(n)) {
+        return res.status(400).json({ success: false, message: `Invalid value for ${k}` });
+      }
+      if (k === 'bookingClawbackHours') {
+        if (n < 1 || n > 168) {
+          return res.status(400).json({
+            success: false,
+            message: 'bookingClawbackHours must be between 1 and 168',
+          });
+        }
+        updates[k] = Math.round(n);
+      } else if (n < 0 || n > 500000) {
+        return res.status(400).json({ success: false, message: `Invalid value for ${k}` });
+      } else {
         updates[k] = Math.round(n);
       }
     }
@@ -643,15 +781,8 @@ exports.putCoinSettingsAdmin = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: 'Coin rules saved',
-      data: {
-        coinsSelfBook: doc.coinsSelfBook,
-        coinsReferralBook: doc.coinsReferralBook,
-        coinsLeadVisited: doc.coinsLeadVisited,
-        coinsLeadVisitMilestoneOnConvert: doc.coinsLeadVisitMilestoneOnConvert,
-        coinsLeadConverted: doc.coinsLeadConverted,
-        updatedAt: doc.updatedAt,
-      },
+      message: 'Settings saved',
+      data: pickAdminSettings(doc),
     });
   } catch (error) {
     next(error);
@@ -751,6 +882,35 @@ exports.updateLeadAssign = async (req, res, next) => {
       .lean();
 
     res.json({ success: true, message: 'Assignment updated', data: updated });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// --- Coin reconciliation (super_admin) ---
+
+const CoinReconciliationRun = require('../models/CoinReconciliationRun');
+
+// GET /api/admin/reconciliation?limit=10
+exports.getReconciliationRuns = async (req, res, next) => {
+  try {
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+    const runs = await CoinReconciliationRun.find()
+      .sort({ ranAt: -1 })
+      .limit(limit)
+      .lean();
+    res.json({ success: true, data: runs });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/admin/reconciliation/run — manual trigger
+exports.runReconciliationNow = async (req, res, next) => {
+  try {
+    const reconcileCoins = require('../jobs/reconcileCoins');
+    const run = await reconcileCoins();
+    res.json({ success: true, data: run });
   } catch (error) {
     next(error);
   }

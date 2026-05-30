@@ -1,8 +1,4 @@
-const requireAdmin = (req, res, next) => {
-  if (req.user?.role !== 'admin') {
-    return res.status(403).json({ success: false, message: 'Admin access required' });
-  }
-  next();
-};
+/** @deprecated Use requirePanelAdmin from rbac.js */
+const { requirePanelAdmin } = require('./rbac');
 
-module.exports = { requireAdmin };
+module.exports = { requireAdmin: requirePanelAdmin };

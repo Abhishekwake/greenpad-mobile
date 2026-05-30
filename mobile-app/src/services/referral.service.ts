@@ -8,6 +8,9 @@ export interface ReferralStats {
     name: string;
     phone: string;
     joinedAt: string;
+    pipelineStatus: string;
+    pipelineLabel: string;
+    leadStatus: string | null;
   }>;
 }
 

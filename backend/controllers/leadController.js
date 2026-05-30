@@ -1,7 +1,7 @@
 const Lead = require('../models/Lead');
 const User = require('../models/User');
-const Transaction = require('../models/Transaction');
 const { getCoinSettings } = require('../utils/getCoinSettings');
+const { runWithTransaction, awardCoins, clawbackBookingCoins, MILESTONE_TYPES } = require('../utils/coinService');
 
 // POST /api/lead/create
 exports.createLead = async (req, res, next) => {
@@ -38,32 +38,42 @@ exports.createLead = async (req, res, next) => {
     const coinsForBooking = type === 'referral' ? coinCfg.coinsReferralBook : coinCfg.coinsSelfBook;
     const description =
       type === 'referral' ? 'Referral site visit booked' : 'Site visit booked';
+    const milestoneType =
+      type === 'referral'
+        ? MILESTONE_TYPES.LEAD_BOOKING_REFERRAL
+        : MILESTONE_TYPES.LEAD_BOOKING_SELF;
 
-    const lead = await Lead.create({
-      userId: req.user._id,
-      leadType: type,
-      relationshipNote: relationshipNote ? String(relationshipNote).slice(0, 200) : '',
-      name,
-      phone,
-      address,
-      propertyType: propertyType || 'Residential',
-      roofArea,
-      preferredDate,
-      timeSlot,
-      notes,
-    });
+    const { lead, user } = await runWithTransaction(async (session) => {
+      const [createdLead] = await Lead.create(
+        [
+          {
+            userId: req.user._id,
+            leadType: type,
+            relationshipNote: relationshipNote ? String(relationshipNote).slice(0, 200) : '',
+            name,
+            phone,
+            address,
+            propertyType: propertyType || 'Residential',
+            roofArea,
+            preferredDate,
+            timeSlot,
+            notes,
+          },
+        ],
+        { session }
+      );
 
-    const user = await User.findById(req.user._id);
-    user.coins += coinsForBooking;
-    user.totalEarned += coinsForBooking;
-    await user.save();
+      const award = await awardCoins({
+        session,
+        userId: req.user._id,
+        amount: coinsForBooking,
+        description,
+        relatedTo: { model: 'Lead', id: createdLead._id },
+        milestoneType,
+      });
 
-    await Transaction.create({
-      userId: user._id,
-      type: 'earn',
-      amount: coinsForBooking,
-      description,
-      relatedTo: { model: 'Lead', id: lead._id },
+      const updatedUser = award.user || (await User.findById(req.user._id).session(session));
+      return { lead: createdLead, user: updatedUser };
     });
 
     res.status(201).json({
@@ -148,10 +158,32 @@ exports.cancelLead = async (req, res, next) => {
       });
     }
 
-    lead.status = 'lost';
-    await lead.save();
+    const result = await runWithTransaction(async (session) => {
+      const clawback = await clawbackBookingCoins({
+        session,
+        lead,
+        userId: req.user._id,
+      });
 
-    res.json({ success: true, message: 'Visit cancelled', data: lead });
+      lead.status = 'lost';
+      await lead.save({ session });
+
+      return clawback;
+    });
+
+    const message =
+      result.clawedBack && result.deducted > 0
+        ? `Visit cancelled. ${result.deducted} booking coins were reversed.`
+        : 'Visit cancelled';
+
+    res.json({
+      success: true,
+      message,
+      data: {
+        lead,
+        coinsClawedBack: result.clawedBack ? result.deducted : 0,
+      },
+    });
   } catch (error) {
     next(error);
   }

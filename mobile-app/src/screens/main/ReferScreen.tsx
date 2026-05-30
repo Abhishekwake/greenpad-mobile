@@ -32,8 +32,9 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '../../navigation/types';
 import { COLORS } from '../../constants';
-import { referralService } from '../../services';
+import { referralService, settingsService, DEFAULT_COIN_RULES } from '../../services';
 import type { ReferralStats } from '../../services/referral.service';
+import type { CoinRules } from '../../services/settings.service';
 import { getErrorMessage } from '../../services/api';
 import { useAuthStore } from '../../stores';
 import { ErrorRetry } from '../../components/ui';
@@ -46,22 +47,24 @@ const REFER_SOFT_BORDER = 'rgba(124, 58, 237, 0.35)';
 
 type RewardStep = { emoji: string; title: string; coins: number };
 
-/** Coins when you book a lead for someone else (backend createLead referral). */
-const SITE_VISIT_REFERRAL_STEPS: RewardStep[] = [
-  { emoji: '📝', title: 'Form filled for your referral', coins: 25 },
-  { emoji: '📅', title: 'Their home visit is done', coins: 500 },
-  { emoji: '✅', title: 'Solar installation complete', coins: 2000 },
-];
-
-/** App install only — not mixed with site-visit referral rewards. */
-const APP_INSTALL_STEPS: RewardStep[] = [
-  { emoji: '📲', title: 'They install using your code', coins: 200 },
-];
-
 const APP_LINK = 'https://greenpad.app/download';
 
-const getShareMessage = (code: string): string => {
-  return `Hey! 👋 Join me on GreenPad and go solar! 🌞\n\nUse my code: ${code} for 200 bonus coins!\n\nDownload: ${APP_LINK}`;
+function buildSiteVisitSteps(rules: CoinRules): RewardStep[] {
+  return [
+    { emoji: '📝', title: 'Form filled for your referral', coins: rules.coinsReferralBook },
+    { emoji: '📅', title: 'Their home visit is done', coins: rules.coinsLeadVisited },
+    { emoji: '✅', title: 'Solar installation complete', coins: rules.coinsLeadConverted },
+  ];
+}
+
+function buildAppInstallSteps(rules: CoinRules): RewardStep[] {
+  return [
+    { emoji: '📲', title: 'They install using your code', coins: rules.coinsReferralSignupReferrer },
+  ];
+}
+
+const getShareMessage = (code: string, refereeBonus: number): string => {
+  return `Hey! 👋 Join me on GreenPad and go solar! 🌞\n\nUse my code: ${code} for ${refereeBonus} bonus coins!\n\nDownload: ${APP_LINK}`;
 };
 
 const formatDate = (dateString: string): string => {
@@ -71,17 +74,22 @@ const formatDate = (dateString: string): string => {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-type ReferralStatus = 'Signed up' | 'Visited' | 'Converted';
-
 const getStatusColor = (status: string): { bg: string; text: string } => {
-  switch (status) {
-    case 'Converted':
+  const key = status.toLowerCase();
+  switch (key) {
+    case 'converted':
       return { bg: '#ECFDF5', text: COLORS.primary };
-    case 'Visited':
+    case 'visited':
+      return { bg: '#EFF6FF', text: '#2563EB' };
+    case 'contacted':
       return { bg: '#FEF3C7', text: '#D97706' };
-    case 'Signed up':
+    case 'visit booked':
+      return { bg: '#EDE9FE', text: '#6D28D9' };
+    case 'closed':
+      return { bg: '#FEE2E2', text: '#B91C1C' };
+    case 'signed up':
     default:
-      return { bg: '#EFF6FF', text: '#3B82F6' };
+      return { bg: REFER_SOFT, text: REFER_ACCENT };
   }
 };
 
@@ -197,12 +205,18 @@ const StepItem: React.FC<StepItemProps> = memo(({ step, index, baseDelay = 400 }
 ));
 
 interface ReferralItemUIProps {
-  referral: { name: string; phone: string; joinedAt: string };
+  referral: {
+    name: string;
+    phone: string;
+    joinedAt: string;
+    pipelineLabel?: string;
+  };
   index: number;
 }
 
 const ReferralItemUI: React.FC<ReferralItemUIProps> = memo(({ referral, index }) => {
-  const statusColors = getStatusColor('Signed up');
+  const label = referral.pipelineLabel || 'Signed up';
+  const statusColors = getStatusColor(label);
 
   return (
     <Animated.View
@@ -223,7 +237,7 @@ const ReferralItemUI: React.FC<ReferralItemUIProps> = memo(({ referral, index })
 
       <View style={styles.referralRight}>
         <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
-          <Text style={[styles.statusText, { color: statusColors.text }]}>Signed up</Text>
+          <Text style={[styles.statusText, { color: statusColors.text }]}>{label}</Text>
         </View>
       </View>
     </Animated.View>
@@ -250,15 +264,22 @@ const ReferScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<ReferralStats | null>(null);
+  const [coinRules, setCoinRules] = useState<CoinRules>(DEFAULT_COIN_RULES);
   const { userData } = useAuthStore();
 
   const referralCode = stats?.referralCode || userData?.referralCode || '------';
+  const siteVisitSteps = buildSiteVisitSteps(coinRules);
+  const appInstallSteps = buildAppInstallSteps(coinRules);
 
   const fetchStats = useCallback(async () => {
     try {
       setError(null);
-      const data = await referralService.getStats();
+      const [data, rules] = await Promise.all([
+        referralService.getStats(),
+        settingsService.getCoinRules().catch(() => DEFAULT_COIN_RULES),
+      ]);
       setStats(data);
+      setCoinRules(rules);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -309,7 +330,7 @@ const ReferScreen: React.FC = () => {
   const handleShare = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const message = getShareMessage(referralCode);
+    const message = getShareMessage(referralCode, coinRules.coinsReferralSignupReferee);
     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
 
     try {
@@ -327,7 +348,7 @@ const ReferScreen: React.FC = () => {
     } catch {
       // share cancelled or failed
     }
-  }, [referralCode]);
+  }, [referralCode, coinRules.coinsReferralSignupReferee]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -387,7 +408,7 @@ const ReferScreen: React.FC = () => {
   const totalEarned = stats?.totalReferralEarnings ?? 0;
 
   const siteVisitMaxCoins =
-    SITE_VISIT_REFERRAL_STEPS.reduce((s, x) => s + x.coins, 0) || 0;
+    siteVisitSteps.reduce((s, x) => s + x.coins, 0) || 0;
 
   const renderHub = () => (
     <>
@@ -448,7 +469,7 @@ const ReferScreen: React.FC = () => {
       <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.section}>
         <Text style={[styles.sectionTitle, styles.sectionTitleTight]}>How you earn</Text>
         <View style={styles.stepsContainer}>
-          {SITE_VISIT_REFERRAL_STEPS.map((step, index) => (
+          {siteVisitSteps.map((step, index) => (
             <StepItem key={index} step={step} index={index} baseDelay={160} />
           ))}
         </View>
@@ -492,7 +513,7 @@ const ReferScreen: React.FC = () => {
       <Animated.View entering={FadeInDown.delay(160).springify()} style={styles.section}>
         <Text style={[styles.sectionTitle, styles.sectionTitleTight]}>Install reward</Text>
         <View style={styles.stepsContainer}>
-          {APP_INSTALL_STEPS.map((step, index) => (
+          {appInstallSteps.map((step, index) => (
             <StepItem key={index} step={step} index={index} baseDelay={200} />
           ))}
         </View>

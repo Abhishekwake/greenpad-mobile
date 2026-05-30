@@ -30,6 +30,7 @@ export default function Header({
   const logout = () => {
     localStorage.removeItem("adminToken");
     localStorage.removeItem("adminName");
+    localStorage.removeItem("adminRole");
     router.replace("/login");
   };
 

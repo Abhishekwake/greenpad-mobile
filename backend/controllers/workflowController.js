@@ -1,7 +1,30 @@
 const WorkflowTemplate = require('../models/WorkflowTemplate');
 const Role = require('../models/Role');
+const { flattenStagesFromTemplate } = require('../utils/workflowHelpers');
 
 const TENANT_ID = 'greenpad';
+
+function normalizePhases(phases) {
+  if (!Array.isArray(phases) || phases.length === 0) return null;
+
+  return phases.map((phase, phaseIndex) => ({
+    phaseId: phase.phaseId || `phase_${phaseIndex + 1}_${Date.now()}`,
+    name: String(phase.name || `Phase ${phaseIndex + 1}`).trim(),
+    order: phase.order ?? phaseIndex + 1,
+    stages: (phase.stages || []).map((stage, stageIndex) => ({
+      stageId: stage.stageId || `stage_${phaseIndex + 1}_${stageIndex + 1}_${Date.now()}`,
+      name: String(stage.name || `Stage ${stageIndex + 1}`).trim(),
+      order: stage.order ?? stageIndex + 1,
+      visibleToCustomer: stage.visibleToCustomer !== false,
+      tasks: (stage.tasks || []).map((task, taskIndex) => ({
+        taskId: task.taskId || `task_${phaseIndex + 1}_${stageIndex + 1}_${taskIndex + 1}_${Date.now()}`,
+        name: String(task.name || `Task ${taskIndex + 1}`).trim(),
+        assignedRole: String(task.assignedRole || '').trim(),
+        docRequired: Boolean(task.docRequired),
+      })),
+    })),
+  }));
+}
 
 // GET /api/admin/workflow
 exports.getWorkflow = async (req, res, next) => {
@@ -20,10 +43,35 @@ exports.getWorkflow = async (req, res, next) => {
 // PUT /api/admin/workflow
 exports.putWorkflow = async (req, res, next) => {
   try {
-    const { name, stages } = req.body;
+    const { name, phases, stages } = req.body;
 
-    if (!Array.isArray(stages) || stages.length === 0) {
-      return res.status(400).json({ success: false, message: 'stages array is required' });
+    let normalizedPhases = normalizePhases(phases);
+
+    // Legacy: accept flat stages and wrap in a single phase
+    if (!normalizedPhases && Array.isArray(stages) && stages.length > 0) {
+      normalizedPhases = [
+        {
+          phaseId: 'phase_custom',
+          name: 'Workflow',
+          order: 1,
+          stages: stages.map((stage, index) => ({
+            stageId: stage.stageId || `stage_${index + 1}`,
+            name: stage.name,
+            order: stage.order ?? index + 1,
+            visibleToCustomer: stage.visibleToCustomer !== false,
+            tasks: stage.tasks || [],
+          })),
+        },
+      ];
+    }
+
+    if (!normalizedPhases?.length) {
+      return res.status(400).json({ success: false, message: 'phases array is required' });
+    }
+
+    const flatCount = flattenStagesFromTemplate({ phases: normalizedPhases }).length;
+    if (flatCount === 0) {
+      return res.status(400).json({ success: false, message: 'At least one stage is required' });
     }
 
     const template = await WorkflowTemplate.findOneAndUpdate(
@@ -31,7 +79,9 @@ exports.putWorkflow = async (req, res, next) => {
       {
         tenantId: TENANT_ID,
         name: name || 'Default Solar Workflow',
-        stages,
+        version: 2,
+        phases: normalizedPhases,
+        stages: [],
       },
       { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
     );

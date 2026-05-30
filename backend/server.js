@@ -27,6 +27,10 @@ const seedRewards = require('./utils/seedRewards');
 const seedCoinSettings = require('./utils/seedCoinSettings');
 const seedWorkflow = require('./utils/seedWorkflow');
 const migrateLeadStatuses = require('./utils/migrateLeadStatuses');
+const migrateTransactionMilestones = require('./utils/migrateTransactionMilestones');
+const migrateCoinSettingsFields = require('./utils/migrateCoinSettingsFields');
+const seedAdminAccounts = require('./utils/seedAdminAccounts');
+const reconcileCoins = require('./jobs/reconcileCoins');
 
 const app = express();
 
@@ -95,6 +99,7 @@ app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api/referral', require('./routes/referral'));
 app.use('/api/lead', require('./routes/lead'));
 app.use('/api/rewards', require('./routes/rewards'));
+app.use('/api/settings', require('./routes/settings'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/project', require('./routes/project'));
 app.use('/api/videos', require('./routes/videos'));
@@ -113,9 +118,26 @@ const PORT = process.env.PORT || 5000;
 const start = async () => {
   await connectDB();
   await migrateLeadStatuses();
+  await migrateTransactionMilestones();
+  await migrateCoinSettingsFields();
+  await seedAdminAccounts();
   await seedRewards();
   await seedCoinSettings();
   await seedWorkflow();
+
+  if (process.env.ENABLE_RECONCILE_CRON !== 'false') {
+    try {
+      const cron = require('node-cron');
+      const schedule = process.env.RECONCILE_CRON_SCHEDULE || '0 3 * * *';
+      cron.schedule(schedule, () => {
+        reconcileCoins().catch((err) => console.error('[cron] reconcile failed:', err));
+      });
+      console.log(`[cron] Coin reconciliation scheduled: ${schedule}`);
+    } catch (err) {
+      console.warn('[cron] node-cron not available — reconciliation cron disabled');
+    }
+  }
+
   app.listen(PORT, '0.0.0.0', () => {
     const lan = getLanIPv4();
     console.log(`Server running in ${process.env.NODE_ENV} on port ${PORT}`);

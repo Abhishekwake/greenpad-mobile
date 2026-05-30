@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Eye } from "lucide-react";
 import api from "@/lib/api";
@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast";
 
 type UserRow = {
   _id: string;
@@ -26,6 +27,8 @@ type UserRow = {
   createdAt: string;
   email?: string;
   referralCode?: string;
+  isActive?: boolean;
+  role?: string;
 };
 
 type Tx = {
@@ -46,6 +49,8 @@ type LeadRow = {
 };
 
 export default function UsersPage() {
+  const qc = useQueryClient();
+  const { success, error: toastError } = useToast();
   const [search, setSearch] = useState("");
   const [applied, setApplied] = useState("");
   const [page, setPage] = useState(1);
@@ -63,6 +68,18 @@ export default function UsersPage() {
       }>(`/admin/users?${params}`);
       return res.data.data;
     },
+  });
+
+  const activeMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      await api.patch(`/admin/user/${id}`, { isActive });
+    },
+    onSuccess: (_data, vars) => {
+      success(vars.isActive ? "User reactivated" : "User deactivated");
+      void qc.invalidateQueries({ queryKey: ["admin-users"] });
+      void qc.invalidateQueries({ queryKey: ["admin-user", detailId] });
+    },
+    onError: () => toastError("Could not update user status"),
   });
 
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -130,6 +147,7 @@ export default function UsersPage() {
                   <TableHead>Phone</TableHead>
                   <TableHead>Coins</TableHead>
                   <TableHead>Referrals</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -137,7 +155,7 @@ export default function UsersPage() {
               <TableBody>
                 {!data?.users?.length ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-12 text-center text-gray-500">
+                    <TableCell colSpan={7} className="py-12 text-center text-gray-500">
                       No users found
                     </TableCell>
                   </TableRow>
@@ -152,6 +170,19 @@ export default function UsersPage() {
                       <TableCell>{u.phone}</TableCell>
                       <TableCell>{u.coins}</TableCell>
                       <TableCell>{u.totalReferrals ?? 0}</TableCell>
+                      <TableCell>
+                        {u.role === "admin" ? (
+                          <span className="text-xs text-gray-500">Admin</span>
+                        ) : u.isActive === false ? (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                            Deactivated
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                            Active
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-gray-600">
                         {format(new Date(u.createdAt), "MMM d, yyyy")}
                       </TableCell>
@@ -236,7 +267,30 @@ export default function UsersPage() {
                   <span className="font-medium text-gray-500">Total referrals:</span>{" "}
                   {detail.totalReferrals}
                 </p>
+                <p>
+                  <span className="font-medium text-gray-500">Account:</span>{" "}
+                  {detail.user.role === "admin"
+                    ? "Admin"
+                    : detail.user.isActive === false
+                      ? "Deactivated"
+                      : "Active"}
+                </p>
               </div>
+              {detail.user.role !== "admin" && (
+                <Button
+                  type="button"
+                  variant={detail.user.isActive === false ? "default" : "destructive"}
+                  disabled={activeMutation.isPending}
+                  onClick={() =>
+                    activeMutation.mutate({
+                      id: detail.user._id,
+                      isActive: detail.user.isActive === false,
+                    })
+                  }
+                >
+                  {detail.user.isActive === false ? "Reactivate user" : "Deactivate user"}
+                </Button>
+              )}
               <Tabs defaultValue="tx">
                 <TabsList>
                   <TabsTrigger value="tx">Transactions</TabsTrigger>
