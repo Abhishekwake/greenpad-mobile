@@ -127,9 +127,9 @@ export default function DashboardPage() {
 
   const barData = data
     ? Object.entries(data.leadsByStatus || {}).map(([name, value]) => ({
-        name: name.charAt(0).toUpperCase() + name.slice(1),
-        count: value,
-      }))
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      count: value,
+    }))
     : [];
 
   return (
@@ -187,7 +187,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold">{data.followUpsDueToday ?? 0}</p>
-                <Button variant="link" size="sm" className="h-auto p-0 text-emerald-700" asChild>
+                <Button variant="ghost" size="sm" className="h-auto p-0 text-emerald-700" asChild>
                   <Link href="/leads">View leads</Link>
                 </Button>
               </CardContent>
