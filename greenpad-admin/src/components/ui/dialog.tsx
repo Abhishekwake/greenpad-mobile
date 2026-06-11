@@ -59,4 +59,35 @@ function DialogTitle({ className, ...props }: React.ComponentPropsWithoutRef<typ
   );
 }
 
-export { Dialog, DialogPortal, DialogTrigger, DialogClose, DialogContent, DialogHeader, DialogTitle };
+function DialogDescription({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      className={cn("text-sm text-gray-500", className)}
+      {...props}
+    />
+  );
+}
+
+function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  Dialog,
+  DialogPortal,
+  DialogTrigger,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+};

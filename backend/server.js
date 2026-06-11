@@ -67,9 +67,20 @@ const otpLimiter = rateLimit({
   message: { success: false, message: 'Too many OTP requests. Wait 1 minute.' },
 });
 
-// Body parsing
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true }));
+// Body parsing — workflow templates and admin config can exceed 10kb; uploads use base64 JSON.
+function jsonBodyLimitFor(req) {
+  const path = req.path || '';
+  const isUpload =
+    path === '/api/project/upload' ||
+    path === '/api/admin/upload' ||
+    /^\/api\/project\/[^/]+\/stage\/[^/]+\/document$/.test(path);
+  return isUpload ? '15mb' : '1mb';
+}
+
+app.use((req, res, next) => {
+  express.json({ limit: jsonBodyLimitFor(req) })(req, res, next);
+});
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Logging
 if (process.env.NODE_ENV === 'development') {
@@ -103,6 +114,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/project', require('./routes/project'));
 app.use('/api/videos', require('./routes/videos'));
+app.use('/api/upload', require('./routes/upload'));
 
 // 404
 app.use((_req, res) => {

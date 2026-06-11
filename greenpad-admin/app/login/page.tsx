@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import api from "@/lib/api";
+import { isAdminToken } from "@/lib/adminRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,8 @@ export default function LoginPage() {
   );
 
   useEffect(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("adminToken")) {
+    const token = typeof window !== "undefined" ? localStorage.getItem("adminToken") : null;
+    if (token && isAdminToken(token)) {
       router.replace("/dashboard");
     }
   }, [router]);

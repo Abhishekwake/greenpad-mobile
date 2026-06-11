@@ -13,6 +13,18 @@ interface DashboardData {
     totalReferrals: number;
     totalLeads: number;
   };
+  siteVisit?: {
+    leadId: string;
+    status: string;
+    statusLabel: string;
+    preferredDate?: string;
+    timeSlot?: string;
+    source?: string;
+  } | null;
+  project?: {
+    status: string;
+    hasProject: boolean;
+  } | null;
   recentTransactions: Array<{
     _id: string;
     type: string;

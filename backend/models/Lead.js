@@ -1,12 +1,38 @@
 const mongoose = require('mongoose');
 
+const followUpSchema = {
+  note: String,
+  status: {
+    type: String,
+    enum: ['called', 'no_answer', 'callback', 'meeting_set'],
+    default: 'called',
+  },
+  nextFollowUpDate: Date,
+  createdBy: String,
+  createdAt: { type: Date, default: Date.now },
+};
+
 const leadSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      default: null,
     },
+    email: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    source: {
+      type: String,
+      enum: ['mobile', 'manual', 'walk_in', 'referral'],
+      default: 'mobile',
+    },
+    followUps: [followUpSchema],
+    nextFollowUpDate: Date,
+    lastFollowUpAt: Date,
+    createdByAdmin: String,
     leadType: {
       type: String,
       enum: ['self', 'referral'],
@@ -55,9 +81,12 @@ const leadSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'contacted', 'visited', 'converted', 'lost'],
+      enum: ['pending', 'contacted', 'visited', 'converted', 'lost', 'voided'],
       default: 'pending',
     },
+    voidedAt: { type: Date, default: null },
+    voidedBy: { type: String, default: null },
+    voidReason: { type: String, default: null, maxlength: 500 },
     assignedTo: {
       type: String,
       default: null,
@@ -73,5 +102,7 @@ const leadSchema = new mongoose.Schema(
 
 leadSchema.index({ userId: 1, createdAt: -1 });
 leadSchema.index({ status: 1 });
+leadSchema.index({ source: 1 });
+leadSchema.index({ nextFollowUpDate: 1 });
 
 module.exports = mongoose.model('Lead', leadSchema);

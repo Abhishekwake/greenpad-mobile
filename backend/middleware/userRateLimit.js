@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 function createUserRateLimiter({ windowMs, max, message }) {
   return rateLimit({
@@ -11,7 +11,7 @@ function createUserRateLimiter({ windowMs, max, message }) {
       if (req.user?._id) {
         return `user:${req.user._id}`;
       }
-      return req.ip || 'unknown';
+      return ipKeyGenerator(req.ip || 'unknown');
     },
   });
 }
@@ -28,4 +28,10 @@ const redeemLimiter = createUserRateLimiter({
   message: 'Too many redemption attempts. Please try again later.',
 });
 
-module.exports = { leadCreateLimiter, redeemLimiter };
+const uploadLimiter = createUserRateLimiter({
+  windowMs: Number(process.env.UPLOAD_RATE_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.UPLOAD_RATE_MAX) || 20,
+  message: 'Too many uploads. Please try again later.',
+});
+
+module.exports = { leadCreateLimiter, redeemLimiter, uploadLimiter };

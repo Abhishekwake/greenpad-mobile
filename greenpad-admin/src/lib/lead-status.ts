@@ -1,4 +1,7 @@
-export const LEAD_STATUSES = ["pending", "contacted", "visited", "converted", "lost"] as const;
+export const LEAD_STATUSES = ["pending", "contacted", "visited", "converted", "lost", "voided"] as const;
+
+/** Shown in status dropdown (void uses separate action) */
+export const LEAD_STATUS_SELECT = ["pending", "contacted", "visited", "converted", "lost"] as const;
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
@@ -15,6 +18,8 @@ export function adminStatusLabel(s: string): string {
   switch (v) {
     case "lost":
       return "Lost";
+    case "voided":
+      return "Voided";
     case "converted":
       return "Converted";
     default:
@@ -35,6 +40,8 @@ export function statusBadgeClass(s: string): string {
       return "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80";
     case "lost":
       return "bg-slate-100 text-slate-700 ring-1 ring-slate-200/90";
+    case "voided":
+      return "bg-red-50 text-red-800 ring-1 ring-red-200/80 line-through decoration-red-300/60";
     default:
       return "bg-gray-50 text-gray-800 ring-1 ring-gray-200/80";
   }

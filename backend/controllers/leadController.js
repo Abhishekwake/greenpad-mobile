@@ -1,6 +1,7 @@
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const { getCoinSettings } = require('../utils/getCoinSettings');
+const { linkUserToLeadsByPhone } = require('../utils/linkUserToLeadsByPhone');
 const { runWithTransaction, awardCoins, clawbackBookingCoins, MILESTONE_TYPES } = require('../utils/coinService');
 
 // POST /api/lead/create
@@ -49,6 +50,7 @@ exports.createLead = async (req, res, next) => {
           {
             userId: req.user._id,
             leadType: type,
+            source: type === 'referral' ? 'referral' : 'mobile',
             relationshipNote: relationshipNote ? String(relationshipNote).slice(0, 200) : '',
             name,
             phone,
@@ -93,16 +95,34 @@ exports.createLead = async (req, res, next) => {
   }
 };
 
-// GET /api/lead/my-leads — show all; legacy DB values normalized to current enum
+// GET /api/lead/my-leads — includes walk-in/manual leads matched by phone
 exports.getMyLeads = async (req, res, next) => {
   try {
-    const leads = await Lead.find({ userId: req.user._id }).sort({ createdAt: -1 }).lean();
+    await linkUserToLeadsByPhone(req.user);
+
+    const phone = String(req.user.phone || '').trim();
+    const query =
+      /^\d{10}$/.test(phone)
+        ? {
+            status: { $ne: 'voided' },
+            $or: [{ userId: req.user._id }, { phone }],
+          }
+        : { userId: req.user._id, status: { $ne: 'voided' } };
+
+    const leads = await Lead.find(query).sort({ createdAt: -1 }).lean();
 
     const legacyToLost = new Set(['not_converted', 'cancelled', 'rejected']);
-    const sanitized = leads.map((l) => ({
-      ...l,
-      status: legacyToLost.has(l.status) ? 'lost' : l.status,
-    }));
+    const seen = new Set();
+    const sanitized = [];
+    for (const l of leads) {
+      const id = String(l._id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      sanitized.push({
+        ...l,
+        status: legacyToLost.has(l.status) ? 'lost' : l.status,
+      });
+    }
 
     res.json({ success: true, data: sanitized });
   } catch (error) {

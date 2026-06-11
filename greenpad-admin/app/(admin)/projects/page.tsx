@@ -7,8 +7,8 @@ import { format } from "date-fns";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
-  FileText,
   Folder,
   MapPin,
   Phone,
@@ -22,15 +22,26 @@ import {
   getProject,
   getProjects,
   getRoles,
+  voidProject,
   updateProjectStage,
   updateProjectTask,
+  type ProjectListView,
 } from "@/lib/projectApi";
+import { VoidConfirmDialog } from "@/components/crm/VoidConfirmDialog";
+import { StartNewProjectDialog } from "@/components/projects/StartNewProjectDialog";
+import {
+  StageExecutionPanel,
+  type StageComment,
+  type StageDocument,
+  type StageMedia,
+} from "@/components/projects/StageExecutionPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { teamUploadEnabled, teamUploadRequired } from "@/lib/uploadPolicy";
 
 type StageStatus = "pending" | "active" | "done" | "delayed";
 
@@ -39,6 +50,13 @@ type ProjectStage = {
   name: string;
   order: number;
   visibleToCustomer: boolean;
+  documentPolicy?: "none" | "optional" | "required";
+  requiredDocuments?: Array<{
+    docId: string;
+    label: string;
+    uploadedBy: "customer" | "admin" | "both";
+    required: boolean;
+  }>;
   status: StageStatus;
   delayReason?: string;
   delayExpectedDate?: string;
@@ -47,9 +65,15 @@ type ProjectStage = {
     name: string;
     assignedRole: string;
     docRequired: boolean;
+    customerUploadPolicy?: "none" | "optional" | "required";
+    teamUploadPolicy?: "none" | "optional" | "required";
+    documents?: { url: string; name?: string }[];
     completed: boolean;
     isCustom?: boolean;
   }[];
+  comments?: StageComment[];
+  documents?: StageDocument[];
+  media?: StageMedia[];
 };
 
 type ProjectPhase = {
@@ -97,7 +121,8 @@ function StatSkeleton() {
   return <div className="h-28 animate-pulse rounded-xl bg-gray-200" />;
 }
 
-function getListDisplayStatus(item: ProjectListItem): "completed" | "delayed" | "active" {
+function getListDisplayStatus(item: ProjectListItem): "completed" | "delayed" | "active" | "voided" {
+  if (item.status === "voided") return "voided";
   if (item.status === "completed") return "completed";
   if (item.stageSummary.delayedCount > 0) return "delayed";
   return "active";
@@ -105,6 +130,11 @@ function getListDisplayStatus(item: ProjectListItem): "completed" | "delayed" | 
 
 function ListStatusBadge({ item }: { item: ProjectListItem }) {
   const display = getListDisplayStatus(item);
+  if (display === "voided") {
+    return (
+      <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Voided</span>
+    );
+  }
   if (display === "completed") {
     return (
       <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
@@ -124,18 +154,25 @@ function ListStatusBadge({ item }: { item: ProjectListItem }) {
   );
 }
 
+const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
+  pending: "Not active",
+  active: "Active",
+  done: "Done",
+  delayed: "Delayed",
+};
+
 function StageStatusBadge({ status }: { status: StageStatus }) {
   return (
     <span
       className={cn(
-        "rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+        "rounded-full px-2 py-0.5 text-xs font-medium",
         status === "done" && "bg-green-50 text-green-700",
         status === "active" && "bg-blue-50 text-blue-700",
         status === "delayed" && "bg-amber-50 text-amber-700",
         status === "pending" && "bg-gray-50 text-gray-500"
       )}
     >
-      {status}
+      {STAGE_STATUS_LABEL[status]}
     </span>
   );
 }
@@ -162,21 +199,40 @@ function OverallStatusBadge({ project }: { project: Project }) {
   );
 }
 
+const LIST_VIEWS: { key: ProjectListView; label: string }[] = [
+  { key: "active", label: "In progress" },
+  { key: "completed", label: "Completed" },
+  { key: "voided", label: "Voided" },
+];
+
 export default function ProjectsPage() {
   const qc = useQueryClient();
   const { success, error: toastError } = useToast();
+  const [listView, setListView] = useState<ProjectListView>("active");
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [stageUpdateModal, setStageUpdateModal] = useState<StageUpdateModal>(null);
   const [delayReason, setDelayReason] = useState("");
   const [delayExpectedDate, setDelayExpectedDate] = useState("");
+  const [voidProjectOpen, setVoidProjectOpen] = useState(false);
+  const [startProjectOpen, setStartProjectOpen] = useState(false);
+  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
 
   const { data: projects = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ["projects"],
+    queryKey: ["projects", listView],
     queryFn: async () => {
-      const res = await getProjects();
+      const res = await getProjects({ view: listView });
       return res.data.data as ProjectListItem[];
     },
     staleTime: 30_000,
+  });
+
+  const { data: allProjects = [] } = useQuery({
+    queryKey: ["projects", "all-stats"],
+    queryFn: async () => {
+      const res = await getProjects({ view: "all" });
+      return res.data.data as ProjectListItem[];
+    },
+    staleTime: 60_000,
   });
 
   const { data: roles = [] } = useQuery({
@@ -205,6 +261,19 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (projectDetail) {
       setSelectedProject(projectDetail);
+      const phases =
+        projectDetail.phases && projectDetail.phases.length > 0
+          ? projectDetail.phases
+          : [{ stages: projectDetail.stages ?? [] }];
+      const nextExpanded: Record<string, boolean> = {};
+      for (const phase of phases) {
+        for (const stage of phase.stages) {
+          if (stage.status === "active" || stage.status === "delayed") {
+            nextExpanded[stage.stageId] = true;
+          }
+        }
+      }
+      setExpandedStages(nextExpanded);
     }
   }, [projectDetail]);
 
@@ -216,12 +285,33 @@ export default function ProjectsPage() {
   }, [stageUpdateModal]);
 
   const stats = useMemo(() => {
-    const total = projects.length;
-    const active = projects.filter((p) => p.status === "active").length;
-    const completed = projects.filter((p) => p.status === "completed").length;
-    const delayed = projects.filter((p) => p.stageSummary.delayedCount > 0).length;
+    const total = allProjects.filter((p) => p.status !== "voided").length;
+    const active = allProjects.filter((p) => p.status === "active" || p.status === "on_hold").length;
+    const completed = allProjects.filter((p) => p.status === "completed").length;
+    const delayed = allProjects.filter(
+      (p) => p.status !== "voided" && p.stageSummary.delayedCount > 0
+    ).length;
     return { total, active, completed, delayed };
-  }, [projects]);
+  }, [allProjects]);
+
+  const voidProjectMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      await voidProject(id, reason);
+    },
+    onSuccess: async () => {
+      success("Project voided");
+      setVoidProjectOpen(false);
+      setSelectedProject(null);
+      await qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (err: unknown) => {
+      toastError(
+        axios.isAxiosError(err)
+          ? String(err.response?.data?.message || err.message)
+          : "Failed to void project"
+      );
+    },
+  });
 
   const invalidateProject = async () => {
     await qc.invalidateQueries({ queryKey: ["projects"] });
@@ -379,23 +469,62 @@ export default function ProjectsPage() {
 
     const totalStages = phases.reduce((n, p) => n + p.stages.length, 0);
 
-    const renderStage = (stage: ProjectStage) => (
-      <div key={stage.stageId} className="rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    const stageHasDocuments = (stage: ProjectStage) => (stage.documents?.length ?? 0) > 0;
+
+    const canCompleteTask = (task: ProjectStage["tasks"][number], stage: ProjectStage) => {
+      if (!teamUploadRequired(task)) return true;
+      const taskDocs = task.documents?.length ?? 0;
+      return taskDocs > 0 || stageHasDocuments(stage);
+    };
+
+    const stageShowsDocuments = (stage: ProjectStage) =>
+      stageHasDocuments(stage) ||
+      stage.tasks.some((t) => teamUploadEnabled(t)) ||
+      stage.documentPolicy !== "none" ||
+      (stage.requiredDocuments?.length ?? 0) > 0;
+
+    const renderStage = (stage: ProjectStage) => {
+      const isExpanded = expandedStages[stage.stageId] ?? stage.status === "active";
+
+      return (
+      <div
+        key={stage.stageId}
+        className={cn(
+          "overflow-hidden rounded-xl border bg-white shadow-sm",
+          stage.status === "active" && "border-emerald-300 ring-1 ring-emerald-100",
+          stage.status === "done" && "border-gray-200 opacity-90"
+        )}
+      >
+        <button
+          type="button"
+          className="flex w-full items-start justify-between gap-3 p-4 text-left hover:bg-gray-50/80"
+          onClick={() =>
+            setExpandedStages((prev) => ({ ...prev, [stage.stageId]: !isExpanded }))
+          }
+        >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-50 text-xs font-semibold text-emerald-800">
               {stage.order}
             </span>
-            <span className="text-sm font-medium text-gray-900">{stage.name}</span>
+            <span className="text-sm font-semibold text-gray-900">{stage.name}</span>
             {stage.visibleToCustomer ? (
-              <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">👁 Customer</span>
+              <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                Customer visible
+              </span>
             ) : (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">Internal</span>
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">Internal</span>
             )}
           </div>
-          <StageStatusBadge status={stage.status} />
-        </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <StageStatusBadge status={stage.status} />
+            <ChevronDown
+              className={cn("h-4 w-4 text-gray-400 transition-transform", isExpanded && "rotate-180")}
+            />
+          </div>
+        </button>
 
+        {isExpanded && (
+        <div className="border-t border-gray-100 px-4 pb-4 pt-3">
         {stage.status === "delayed" && (stage.delayReason || stage.delayExpectedDate) && (
           <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             {stage.delayReason && <p>⚠ {stage.delayReason}</p>}
@@ -407,19 +536,26 @@ export default function ProjectsPage() {
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Work items</p>
           <div className="space-y-2">
             {stage.tasks.map((task) => (
-              <div key={task.taskId} className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+              <div key={task.taskId} className="rounded-lg bg-gray-50 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="checkbox"
                   checked={task.completed}
-                  disabled={taskMutation.isPending}
-                  onChange={(e) =>
+                  disabled={taskMutation.isPending || detailProject.status === "voided"}
+                  onChange={(e) => {
+                    if (e.target.checked && !canCompleteTask(task, stage)) {
+                      toastError(
+                        "This work item requires a team file — upload under Documents below first."
+                      );
+                      return;
+                    }
                     taskMutation.mutate({
                       projectId: detailProject._id,
                       stageId: stage.stageId,
                       taskId: task.taskId,
                       completed: e.target.checked,
-                    })
-                  }
+                    });
+                  }}
                   className="h-3.5 w-3.5 rounded border-gray-300"
                 />
                 <Input
@@ -463,21 +599,6 @@ export default function ProjectsPage() {
                 </select>
                 <button
                   type="button"
-                  title="Document required"
-                  onClick={() =>
-                    taskMutation.mutate({
-                      projectId: detailProject._id,
-                      stageId: stage.stageId,
-                      taskId: task.taskId,
-                      docRequired: !task.docRequired,
-                    })
-                  }
-                  className={cn("shrink-0", task.docRequired ? "text-blue-500" : "text-gray-300 hover:text-gray-400")}
-                >
-                  <FileText className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
                   disabled={deleteTaskMutation.isPending}
                   onClick={() => {
                     if (window.confirm(`Remove "${task.name}" from this project?`)) {
@@ -492,6 +613,12 @@ export default function ProjectsPage() {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
+              </div>
+              {teamUploadRequired(task) && !task.completed && !canCompleteTask(task, stage) && (
+                <p className="mt-1.5 text-xs text-amber-700">
+                  Team file required — upload under <strong>Documents</strong> below, then mark complete.
+                </p>
+              )}
               </div>
             ))}
           </div>
@@ -514,30 +641,90 @@ export default function ProjectsPage() {
           </button>
         </div>
 
-        {stage.status !== "done" && (
-          <div className="mt-3 border-t pt-3">
-            <select
-              key={`${stage.stageId}-${stage.status}-${stageMutation.isPending}`}
-              defaultValue=""
-              disabled={stageMutation.isPending}
-              onChange={(e) => {
-                handleStageAction(detailProject, stage, e.target.value);
-                e.target.value = "";
-              }}
-              className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700"
+        <StageExecutionPanel
+          projectId={detailProject._id}
+          stageId={stage.stageId}
+          documentPolicy={stage.documentPolicy}
+          requiredDocuments={stage.requiredDocuments}
+          tasks={stage.tasks}
+          showDocuments={stageShowsDocuments(stage)}
+          comments={stage.comments}
+          documents={stage.documents}
+          media={stage.media}
+          onUpdated={() => void invalidateProject()}
+          onError={toastError}
+        />
+
+        {detailProject.status !== "voided" && stage.status !== "done" && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+            <span className="w-full text-xs font-medium uppercase tracking-wide text-gray-400">
+              Update stage
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={
+                stageMutation.isPending || stage.status === "active" || stage.status === "done"
+              }
+              onClick={() => handleStageAction(detailProject, stage, "active")}
             >
-              <option value="" disabled>Move to…</option>
-              <option value="active">Mark active</option>
-              <option value="done">Mark done</option>
-              <option value="delayed">Mark delayed</option>
-            </select>
+              Mark active
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={
+                stageMutation.isPending ||
+                stage.status === "pending" ||
+                stage.status === "done"
+              }
+              onClick={() => handleStageAction(detailProject, stage, "pending")}
+            >
+              Mark not active
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-green-200 text-green-800 hover:bg-green-50"
+              disabled={stageMutation.isPending || stage.status === "done"}
+              onClick={() => handleStageAction(detailProject, stage, "done")}
+            >
+              Mark done
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-amber-200 text-amber-800 hover:bg-amber-50"
+              disabled={stageMutation.isPending}
+              onClick={() => handleStageAction(detailProject, stage, "delayed")}
+            >
+              Mark delayed
+            </Button>
           </div>
+        )}
+        </div>
         )}
       </div>
     );
+    };
 
     return (
       <div className="space-y-4">
+        <VoidConfirmDialog
+          open={voidProjectOpen}
+          onOpenChange={setVoidProjectOpen}
+          title="Void installation project?"
+          description="This project will be removed from the active installations list. Progress data is kept for audit — use this instead of deleting records."
+          confirmLabel="Void project"
+          isPending={voidProjectMutation.isPending}
+          onConfirm={(reason) =>
+            voidProjectMutation.mutateAsync({ id: detailProject._id, reason })
+          }
+        />
         <button
           type="button"
           onClick={() => setSelectedProject(null)}
@@ -571,9 +758,26 @@ export default function ProjectsPage() {
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500">No stages</span>
               )}
               <span className="text-xs text-gray-400">Project #{detailProject._id.slice(-6).toUpperCase()}</span>
+              {detailProject.status !== "voided" && detailProject.status !== "completed" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 border-red-200 text-red-700 hover:bg-red-50"
+                  onClick={() => setVoidProjectOpen(true)}
+                >
+                  Void project…
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
+
+        {detailProject.status === "voided" && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            This project was voided and is read-only. It no longer appears in the active installations list.
+          </div>
+        )}
 
         {detailError && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-center justify-between">
@@ -657,9 +861,53 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-        <p className="text-sm text-gray-500">Post-conversion solar installations</p>
+      <StartNewProjectDialog
+        open={startProjectOpen}
+        onOpenChange={setStartProjectOpen}
+        onProjectCreated={(projectId, customerName) => {
+          setListView("active");
+          setSelectedProject({
+            _id: projectId,
+            customerName,
+            customerPhone: "",
+            address: "",
+            status: "active",
+            currentStageId: "",
+            stages: [],
+            createdAt: new Date().toISOString(),
+          });
+        }}
+      />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+          <p className="text-sm text-gray-500">
+            Active installations only — completed and voided are in separate tabs
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" onClick={() => setStartProjectOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Start new project
+          </Button>
+          <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+            {LIST_VIEWS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                onClick={() => setListView(v.key)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  listView === v.key
+                    ? "bg-white text-emerald-800 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {isError && (
@@ -731,8 +979,27 @@ export default function ProjectsPage() {
         </div>
       ) : projects.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-sm text-gray-500">
-            No projects yet. Create one from a converted lead.
+          <CardContent className="flex flex-col items-center py-12 text-center text-sm text-gray-500">
+            {listView === "active" ? (
+              <>
+                <p>No active installations yet.</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Start from a converted site visit — manual and app leads are supported.
+                </p>
+                <Button
+                  type="button"
+                  className="mt-4 gap-2"
+                  onClick={() => setStartProjectOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Start new project
+                </Button>
+              </>
+            ) : listView === "completed" ? (
+              "No completed projects yet."
+            ) : (
+              "No voided projects."
+            )}
           </CardContent>
         </Card>
       ) : (

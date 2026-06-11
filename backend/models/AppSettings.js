@@ -18,6 +18,24 @@ const appSettingsSchema = new mongoose.Schema(
     /** 10-digit WhatsApp number for sales (no country code prefix in DB) */
     supportWhatsApp: { type: String, default: '9999999999', match: [/^\d{10}$/, 'Must be 10 digits'] },
     supportPhone: { type: String, default: '9999999999', match: [/^\d{10}$/, 'Must be 10 digits'] },
+    // Company profile
+    companyLegalName: { type: String, default: 'GreenPad Ventures' },
+    companyAddress: { type: String, default: '' },
+    companyGst: { type: String, default: '' },
+    companyEmail: { type: String, default: '' },
+    companyWebsite: { type: String, default: '' },
+    // Branding
+    brandDisplayName: { type: String, default: 'GreenPad' },
+    brandPrimaryColor: { type: String, default: '#059669' },
+    brandLogoUrl: { type: String, default: '' },
+    // Notification toggles
+    notifyLeadStatusPush: { type: Boolean, default: true },
+    notifyProjectStagePush: { type: Boolean, default: true },
+    notifyCoinRedemptionPush: { type: Boolean, default: true },
+    // Feature flags
+    customerDocumentsEnabled: { type: Boolean, default: true },
+    internalDocumentsEnabled: { type: Boolean, default: true },
+    reelsEnabled: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

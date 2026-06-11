@@ -48,18 +48,50 @@ async function migrateTransactionMilestones() {
   }).sort({ createdAt: 1 });
 
   let backfilled = 0;
+  let removedDupes = 0;
   for (const tx of withoutType) {
     const milestoneType = inferMilestoneType(tx);
     if (!milestoneType) {
       continue;
     }
+
+    if (tx.relatedTo?.id) {
+      const existing = await Transaction.findOne({
+        userId: tx.userId,
+        'relatedTo.id': tx.relatedTo.id,
+        milestoneType,
+        type: 'earn',
+        _id: { $ne: tx._id },
+      })
+        .select('_id')
+        .lean();
+
+      if (existing) {
+        await Transaction.deleteOne({ _id: tx._id });
+        removedDupes += 1;
+        continue;
+      }
+    }
+
     tx.milestoneType = milestoneType;
-    await tx.save();
-    backfilled += 1;
+    try {
+      await tx.save();
+      backfilled += 1;
+    } catch (err) {
+      if (err.code === 11000) {
+        await Transaction.deleteOne({ _id: tx._id });
+        removedDupes += 1;
+        continue;
+      }
+      throw err;
+    }
   }
 
   if (backfilled > 0) {
     console.log(`[migrate] Backfilled milestoneType on ${backfilled} transaction(s)`);
+  }
+  if (removedDupes > 0) {
+    console.log(`[migrate] Removed ${removedDupes} duplicate earn transaction(s) during backfill`);
   }
 
   const dupGroups = await Transaction.aggregate([
@@ -84,7 +116,7 @@ async function migrateTransactionMilestones() {
     { $match: { count: { $gt: 1 } } },
   ]);
 
-  let removedDupes = 0;
+  let removedGroupedDupes = 0;
   for (const group of dupGroups) {
     const sorted = await Transaction.find({ _id: { $in: group.ids } })
       .sort({ createdAt: 1 })
@@ -93,12 +125,12 @@ async function migrateTransactionMilestones() {
     const toRemove = sorted.slice(1).map((d) => d._id);
     if (toRemove.length) {
       await Transaction.deleteMany({ _id: { $in: toRemove } });
-      removedDupes += toRemove.length;
+      removedGroupedDupes += toRemove.length;
     }
   }
 
-  if (removedDupes > 0) {
-    console.log(`[migrate] Removed ${removedDupes} duplicate earn transaction(s)`);
+  if (removedGroupedDupes > 0) {
+    console.log(`[migrate] Removed ${removedGroupedDupes} duplicate earn transaction(s)`);
   }
 
   const boostResult = await Reward.updateMany(

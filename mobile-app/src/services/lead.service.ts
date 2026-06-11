@@ -48,10 +48,10 @@ export const leadService = {
   },
 
   getMyLeads: async (): Promise<Lead[]> => {
-    const response = await api.get<{ success: boolean; data: Lead[] }>(
+    const response = await api.get<{ success: boolean; data?: Lead[] }>(
       '/lead/my-leads'
     );
-    return response.data.data;
+    return response.data.data ?? [];
   },
 
   rescheduleLead: async (

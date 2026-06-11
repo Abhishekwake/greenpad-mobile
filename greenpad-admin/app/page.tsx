@@ -2,13 +2,14 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { isAdminToken } from "@/lib/adminRole";
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
     const t = localStorage.getItem("adminToken");
-    router.replace(t ? "/dashboard" : "/login");
+    router.replace(t && isAdminToken(t) ? "/dashboard" : "/login");
   }, [router]);
 
   return (

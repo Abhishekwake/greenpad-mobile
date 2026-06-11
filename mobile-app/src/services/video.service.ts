@@ -13,10 +13,10 @@ export interface Video {
 
 export const videoService = {
   getVideos: async (): Promise<Video[]> => {
-    const response = await api.get<{ success: boolean; videos: Video[] }>(
+    const response = await api.get<{ success: boolean; videos?: Video[] }>(
       '/videos'
     );
-    return response.data.videos;
+    return response.data.videos ?? [];
   },
 };
 

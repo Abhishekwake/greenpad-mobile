@@ -13,6 +13,20 @@ const DEFAULTS = {
   bookingClawbackHours: 24,
   supportWhatsApp: '9999999999',
   supportPhone: '9999999999',
+  companyLegalName: 'GreenPad Ventures',
+  companyAddress: '',
+  companyGst: '',
+  companyEmail: '',
+  companyWebsite: '',
+  brandDisplayName: 'GreenPad',
+  brandPrimaryColor: '#059669',
+  brandLogoUrl: '',
+  notifyLeadStatusPush: true,
+  notifyProjectStagePush: true,
+  notifyCoinRedemptionPush: true,
+  customerDocumentsEnabled: true,
+  internalDocumentsEnabled: true,
+  reelsEnabled: true,
 };
 
 const COIN_SETTING_KEYS = [
@@ -29,7 +43,24 @@ const COIN_SETTING_KEYS = [
 
 const SUPPORT_SETTING_KEYS = ['supportWhatsApp', 'supportPhone'];
 
-const ALL_ADMIN_SETTING_KEYS = [...COIN_SETTING_KEYS, ...SUPPORT_SETTING_KEYS];
+const ALL_ADMIN_SETTING_KEYS = [
+  ...COIN_SETTING_KEYS,
+  ...SUPPORT_SETTING_KEYS,
+  'companyLegalName',
+  'companyAddress',
+  'companyGst',
+  'companyEmail',
+  'companyWebsite',
+  'brandDisplayName',
+  'brandPrimaryColor',
+  'brandLogoUrl',
+  'notifyLeadStatusPush',
+  'notifyProjectStagePush',
+  'notifyCoinRedemptionPush',
+  'customerDocumentsEnabled',
+  'internalDocumentsEnabled',
+  'reelsEnabled',
+];
 
 function pickCoinSettings(doc) {
   return {
@@ -53,10 +84,48 @@ function pickSupportSettings(doc) {
   };
 }
 
+function pickFeatureSettings(doc) {
+  return {
+    customerDocumentsEnabled: doc.customerDocumentsEnabled ?? true,
+    internalDocumentsEnabled: doc.internalDocumentsEnabled ?? true,
+    reelsEnabled: doc.reelsEnabled ?? true,
+  };
+}
+
+function pickBrandingSettings(doc) {
+  return {
+    brandDisplayName: doc.brandDisplayName || 'GreenPad',
+    brandPrimaryColor: doc.brandPrimaryColor || '#059669',
+    brandLogoUrl: doc.brandLogoUrl || '',
+  };
+}
+
+function pickCompanySettings(doc) {
+  return {
+    companyLegalName: doc.companyLegalName || '',
+    companyAddress: doc.companyAddress || '',
+    companyGst: doc.companyGst || '',
+    companyEmail: doc.companyEmail || '',
+    companyWebsite: doc.companyWebsite || '',
+  };
+}
+
+function pickNotificationSettings(doc) {
+  return {
+    notifyLeadStatusPush: doc.notifyLeadStatusPush ?? true,
+    notifyProjectStagePush: doc.notifyProjectStagePush ?? true,
+    notifyCoinRedemptionPush: doc.notifyCoinRedemptionPush ?? true,
+  };
+}
+
 function pickAdminSettings(doc) {
   return {
     ...pickCoinSettings(doc),
     ...pickSupportSettings(doc),
+    ...pickCompanySettings(doc),
+    ...pickBrandingSettings(doc),
+    ...pickNotificationSettings(doc),
+    ...pickFeatureSettings(doc),
   };
 }
 
@@ -73,6 +142,10 @@ module.exports = {
   pickCoinSettings,
   pickSupportSettings,
   pickAdminSettings,
+  pickFeatureSettings,
+  pickBrandingSettings,
+  pickCompanySettings,
+  pickNotificationSettings,
   COIN_SETTING_KEYS,
   SUPPORT_SETTING_KEYS,
   ALL_ADMIN_SETTING_KEYS,

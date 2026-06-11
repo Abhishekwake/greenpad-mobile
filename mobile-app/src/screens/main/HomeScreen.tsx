@@ -350,7 +350,15 @@ const VideoCard: React.FC<{
   );
 };
 
-const ACTIVE_LEAD_STATUSES = ['pending', 'contacted', 'visited'];
+const ACTIVE_LEAD_STATUSES = ['pending', 'contacted', 'visited', 'converted'];
+
+const LEAD_STATUS_LABEL: Record<string, string> = {
+  pending: 'Site visit scheduled',
+  contacted: 'We will contact you',
+  visited: 'Site visit done',
+  converted: 'Approved — installation next',
+  lost: 'Closed',
+};
 
 const LOADING_TIMEOUT = 20000; // 20 seconds max loading time
 
@@ -364,6 +372,7 @@ const HomeScreen: React.FC = () => {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [reelsEnabled, setReelsEnabled] = useState(true);
   const [supportContact, setSupportContact] = useState(DEFAULT_SUPPORT_CONTACT);
   const { userData, updateCoins } = useAuthStore();
   const loadingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -390,25 +399,30 @@ const HomeScreen: React.FC = () => {
         }, LOADING_TIMEOUT);
       }
 
-      const [data, leads, videosData, contact] = await Promise.all([
+      const [data, leads, videosData, contact, features] = await Promise.all([
         userService.getDashboard(),
         leadService.getMyLeads(),
         videoService.getVideos().catch(() => []),
         settingsService.getContact().catch(() => DEFAULT_SUPPORT_CONTACT),
+        settingsService.getFeatures().catch(() => ({ reelsEnabled: true, customerDocumentsEnabled: true, internalDocumentsEnabled: true })),
       ]);
       setSupportContact(contact);
-      
+      setReelsEnabled(features?.reelsEnabled !== false);
+
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
       }
 
       setDashboard(data);
-      updateCoins(data.user.coins);
-      setVideos(videosData);
+      if (data?.user?.coins != null) {
+        updateCoins(data.user.coins);
+      }
+      setVideos(Array.isArray(videosData) ? videosData : []);
       setError(null);
 
-      const active = leads.find((l) => ACTIVE_LEAD_STATUSES.includes(l.status)) ?? null;
+      const leadsList = Array.isArray(leads) ? leads : [];
+      const active = leadsList.find((l) => ACTIVE_LEAD_STATUSES.includes(l.status)) ?? null;
       setActiveLead(active);
     } catch (err) {
       if (loadingTimeoutRef.current) {
@@ -488,13 +502,26 @@ const HomeScreen: React.FC = () => {
   }, [supportContact]);
 
   const siteVisitCard: ActionItem = useMemo(() => {
-    if (activeLead) {
+    if (activeProject) {
       return {
         id: '2',
-        title: 'Visit Scheduled',
-        icon: 'checkmark-circle',
+        title: 'Installation',
+        icon: 'construct',
+        gradient: ['#1D9E75', '#0F766E'],
+        onPress: () => navigateToStack('MyProject'),
+      };
+    }
+    if (activeLead) {
+      const label = LEAD_STATUS_LABEL[activeLead.status] || 'My site visit';
+      return {
+        id: '2',
+        title: activeLead.status === 'converted' ? 'Installation soon' : label,
+        icon: activeLead.status === 'converted' ? 'sunny' : 'checkmark-circle',
         gradient: ['#3B82F6', '#1D4ED8'],
-        onPress: () => navigateToStack('MyLeads'),
+        onPress: () =>
+          activeLead.status === 'converted'
+            ? navigateToStack('MyProject')
+            : navigateToStack('MyLeads'),
       };
     }
     return {
@@ -504,7 +531,7 @@ const HomeScreen: React.FC = () => {
       gradient: ['#3B82F6', '#1D4ED8'],
       onPress: () => navigateToStack('BookSiteVisit', { mode: 'self' }),
     };
-  }, [activeLead, navigateToStack]);
+  }, [activeLead, activeProject, navigateToStack]);
 
   const actionItems = useMemo<ActionItem[]>(
     () => [
@@ -600,6 +627,24 @@ const HomeScreen: React.FC = () => {
       >
         <CoinWalletCard coins={userCoins} onViewWallet={() => tabNavigation.navigate('Wallet')} />
 
+        {activeLead && !activeProject ? (
+          <View style={styles.siteVisitBanner}>
+            <Ionicons name="information-circle" size={20} color="#1D4ED8" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.siteVisitBannerTitle}>
+                {dashboard?.siteVisit?.statusLabel ||
+                  LEAD_STATUS_LABEL[activeLead.status] ||
+                  'Site visit update'}
+              </Text>
+              <Text style={styles.siteVisitBannerSub}>
+                {activeLead.status === 'converted'
+                  ? 'Your project will appear here once our team starts tracking on the app.'
+                  : 'Log in with this number to follow your visit status anytime.'}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {activeProject && (
           <TouchableOpacity
             style={styles.projectTrackCard}
@@ -634,27 +679,31 @@ const HomeScreen: React.FC = () => {
 
         <TrustBadge />
 
-        <Animated.View entering={FadeInDown.delay(550).springify()}>
-          <Text style={styles.sectionTitle}>See Real Installations</Text>
-        </Animated.View>
+        {reelsEnabled ? (
+          <>
+            <Animated.View entering={FadeInDown.delay(550).springify()}>
+              <Text style={styles.sectionTitle}>See Real Installations</Text>
+            </Animated.View>
 
-        {videos.length > 0 ? (
-          <FlatList
-            data={videos}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.videoList}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item, index }) => (
-              <VideoCard item={item} index={index} onPress={handleVideoPress} />
+            {videos.length > 0 ? (
+              <FlatList
+                data={videos}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.videoList}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item, index }) => (
+                  <VideoCard item={item} index={index} onPress={handleVideoPress} />
+                )}
+              />
+            ) : (
+              <View style={styles.noVideosContainer}>
+                <Ionicons name="videocam-outline" size={32} color={COLORS.gray[400]} />
+                <Text style={styles.noVideosText}>Videos coming soon</Text>
+              </View>
             )}
-          />
-        ) : (
-          <View style={styles.noVideosContainer}>
-            <Ionicons name="videocam-outline" size={32} color={COLORS.gray[400]} />
-            <Text style={styles.noVideosText}>Videos coming soon</Text>
-          </View>
-        )}
+          </>
+        ) : null}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -975,6 +1024,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.gray[500],
     marginTop: 8,
+  },
+  siteVisitBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  siteVisitBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E3A8A',
+  },
+  siteVisitBannerSub: {
+    fontSize: 12,
+    color: '#3B82F6',
+    marginTop: 4,
+    lineHeight: 17,
   },
   projectTrackCard: {
     flexDirection: 'row',

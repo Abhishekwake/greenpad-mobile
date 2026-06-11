@@ -35,6 +35,12 @@ export const DEFAULT_SUPPORT_CONTACT: SupportContact = {
   supportPhone: '9999999999',
 };
 
+export type FeatureFlags = {
+  customerDocumentsEnabled: boolean;
+  internalDocumentsEnabled: boolean;
+  reelsEnabled: boolean;
+};
+
 export const settingsService = {
   async getCoinRules(): Promise<CoinRules> {
     const { data } = await api.get<{ success: boolean; data: CoinRules }>('/settings/coin-rules');
@@ -43,6 +49,11 @@ export const settingsService = {
 
   async getContact(): Promise<SupportContact> {
     const { data } = await api.get<{ success: boolean; data: SupportContact }>('/settings/contact');
+    return data.data;
+  },
+
+  async getFeatures(): Promise<FeatureFlags> {
+    const { data } = await api.get<{ success: boolean; data: FeatureFlags }>('/settings/features');
     return data.data;
   },
 };

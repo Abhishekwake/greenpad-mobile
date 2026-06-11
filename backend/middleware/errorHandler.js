@@ -35,6 +35,13 @@ const errorHandler = (err, req, res, _next) => {
     return res.status(400).json({ success: false, message: `Invalid ${err.path}` });
   }
 
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      success: false,
+      message: 'Request payload is too large',
+    });
+  }
+
   // JWT errors
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({ success: false, message: 'Invalid token' });

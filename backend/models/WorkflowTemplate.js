@@ -5,6 +5,32 @@ const taskSchema = {
   name: String,
   assignedRole: String,
   docRequired: { type: Boolean, default: false },
+  customerUploadPolicy: {
+    type: String,
+    enum: ['none', 'optional', 'required'],
+    default: 'none',
+  },
+  mediaUploadPolicy: {
+    type: String,
+    enum: ['none', 'optional', 'required'],
+    default: 'none',
+  },
+  teamUploadPolicy: {
+    type: String,
+    enum: ['none', 'optional', 'required'],
+    default: 'none',
+  },
+};
+
+const requiredDocumentSchema = {
+  docId: String,
+  label: String,
+  uploadedBy: {
+    type: String,
+    enum: ['customer', 'admin', 'both'],
+    default: 'admin',
+  },
+  required: { type: Boolean, default: true },
 };
 
 const stageSchema = {
@@ -12,6 +38,24 @@ const stageSchema = {
   name: String,
   order: Number,
   visibleToCustomer: { type: Boolean, default: true },
+  documentPolicy: {
+    type: String,
+    enum: ['none', 'optional', 'required'],
+    default: 'none',
+  },
+  /** @deprecated use requiresApproval */
+  approvalRequired: { type: Boolean, default: false },
+  /** @deprecated use color */
+  stageColor: { type: String, default: null },
+  /** @deprecated use icon */
+  stageIcon: { type: String, default: null },
+  allowStageComments: { type: Boolean, default: false },
+  color: { type: String, default: '#1D9E75' },
+  icon: { type: String, default: '📋' },
+  requiresApproval: { type: Boolean, default: false },
+  approvalLabel: { type: String, default: 'Approval required' },
+  requiredDocuments: [requiredDocumentSchema],
+  estimatedDays: { type: Number, default: null },
   tasks: [taskSchema],
 };
 

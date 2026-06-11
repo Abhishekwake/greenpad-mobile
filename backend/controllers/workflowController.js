@@ -1,8 +1,56 @@
 const WorkflowTemplate = require('../models/WorkflowTemplate');
 const Role = require('../models/Role');
 const { flattenStagesFromTemplate } = require('../utils/workflowHelpers');
+const { normalizeTaskUpload, normalizePhasesUploads } = require('../utils/uploadPolicy');
 
 const TENANT_ID = 'greenpad';
+
+function normalizeStage(stage, stageIndex, phaseIndex) {
+  return {
+    stageId: stage.stageId || `stage_${phaseIndex + 1}_${stageIndex + 1}_${Date.now()}`,
+    name: String(stage.name || `Stage ${stageIndex + 1}`).trim(),
+    order: stage.order ?? stageIndex + 1,
+    visibleToCustomer: stage.visibleToCustomer !== false,
+    documentPolicy: stage.documentPolicy || 'none',
+    approvalRequired: Boolean(stage.requiresApproval ?? stage.approvalRequired),
+    stageColor: stage.color || stage.stageColor || null,
+    stageIcon: stage.icon || stage.stageIcon || null,
+    allowStageComments: Boolean(stage.allowStageComments),
+    color: stage.color || stage.stageColor || '#1D9E75',
+    icon: stage.icon || stage.stageIcon || '📋',
+    requiresApproval: Boolean(stage.requiresApproval ?? stage.approvalRequired),
+    approvalLabel: String(stage.approvalLabel || 'Approval required').trim(),
+    estimatedDays: stage.estimatedDays != null && stage.estimatedDays !== ''
+      ? Number(stage.estimatedDays)
+      : null,
+    requiredDocuments: (stage.requiredDocuments || []).map((doc, docIndex) => ({
+      docId: doc.docId || `doc_${phaseIndex + 1}_${stageIndex + 1}_${docIndex + 1}_${Date.now()}`,
+      label: String(doc.label || '').trim(),
+      uploadedBy: ['customer', 'admin', 'both'].includes(doc.uploadedBy) ? doc.uploadedBy : 'admin',
+      required: doc.required !== false,
+    })),
+    tasks: (stage.tasks || []).map((task, taskIndex) => {
+      const normalized = normalizeTaskUpload({
+        taskId: task.taskId || `task_${phaseIndex + 1}_${stageIndex + 1}_${taskIndex + 1}_${Date.now()}`,
+        name: String(task.name || `Task ${taskIndex + 1}`).trim(),
+        assignedRole: String(task.assignedRole || '').trim(),
+        customerUploadPolicy: task.customerUploadPolicy,
+        teamUploadPolicy: task.teamUploadPolicy,
+        docRequired: task.docRequired,
+        mediaUploadPolicy: task.mediaUploadPolicy,
+      });
+      return {
+        taskId: normalized.taskId,
+        name: normalized.name,
+        assignedRole: normalized.assignedRole,
+        docRequired: normalized.docRequired,
+        customerUploadPolicy: normalized.customerUploadPolicy,
+        teamUploadPolicy: normalized.teamUploadPolicy,
+        mediaUploadPolicy: normalized.mediaUploadPolicy,
+      };
+    }),
+  };
+}
 
 function normalizePhases(phases) {
   if (!Array.isArray(phases) || phases.length === 0) return null;
@@ -11,18 +59,9 @@ function normalizePhases(phases) {
     phaseId: phase.phaseId || `phase_${phaseIndex + 1}_${Date.now()}`,
     name: String(phase.name || `Phase ${phaseIndex + 1}`).trim(),
     order: phase.order ?? phaseIndex + 1,
-    stages: (phase.stages || []).map((stage, stageIndex) => ({
-      stageId: stage.stageId || `stage_${phaseIndex + 1}_${stageIndex + 1}_${Date.now()}`,
-      name: String(stage.name || `Stage ${stageIndex + 1}`).trim(),
-      order: stage.order ?? stageIndex + 1,
-      visibleToCustomer: stage.visibleToCustomer !== false,
-      tasks: (stage.tasks || []).map((task, taskIndex) => ({
-        taskId: task.taskId || `task_${phaseIndex + 1}_${stageIndex + 1}_${taskIndex + 1}_${Date.now()}`,
-        name: String(task.name || `Task ${taskIndex + 1}`).trim(),
-        assignedRole: String(task.assignedRole || '').trim(),
-        docRequired: Boolean(task.docRequired),
-      })),
-    })),
+    stages: (phase.stages || []).map((stage, stageIndex) =>
+      normalizeStage(stage, stageIndex, phaseIndex)
+    ),
   }));
 }
 
@@ -34,7 +73,10 @@ exports.getWorkflow = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Workflow template not found' });
     }
 
-    res.json({ success: true, data: template });
+    const data = template.phases?.length
+      ? { ...template, phases: normalizePhasesUploads(template.phases) }
+      : template;
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }

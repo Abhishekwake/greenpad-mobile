@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearAdminSession } from "@/lib/adminRole";
 
 /**
  * Central Axios client for the admin app. All server routes use paths like `/admin/...`
@@ -15,7 +16,12 @@ export function getApiBaseUrl(): string {
         "for production set it in `.env.production` or your host (see README)."
     );
   }
-  return raw.replace(/\/+$/, "");
+  let base = raw.replace(/\/+$/, "");
+  // Backend mounts routes under /api — avoid 404 "Route not found" when env omits it
+  if (!base.endsWith("/api")) {
+    base = `${base}/api`;
+  }
+  return base;
 }
 
 const api = axios.create({
@@ -37,13 +43,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+function shouldForceLogin(status: number | undefined): boolean {
+  if (typeof window === "undefined" || !status) return false;
+  return status === 401 || status === 403;
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("adminToken");
-      localStorage.removeItem("adminName");
-      localStorage.removeItem("adminRole");
+    if (shouldForceLogin(error.response?.status)) {
+      clearAdminSession();
       window.location.href = "/login";
     }
     return Promise.reject(error);

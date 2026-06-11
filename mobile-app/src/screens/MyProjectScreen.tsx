@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Linking,
   ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,13 +21,37 @@ import Animated, {
   withSequence,
   interpolate,
 } from 'react-native-reanimated';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchMyProject } from '../services/project.service';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import Toast from 'react-native-toast-message';
+import {
+  fetchMyProject,
+  uploadProjectFile,
+  uploadStageDocument,
+  getDocumentAccessUrl,
+  type ProjectStage,
+  type RequiredDocumentSlot,
+} from '../services/project.service';
+import { settingsService } from '../services/settings.service';
+import { leadService, type Lead } from '../services/lead.service';
+import { getErrorMessage } from '../services/api';
 import type { MainStackParamList } from '../navigation/types';
+
+type UploadTarget = {
+  stage: ProjectStage;
+  name: string;
+  taskId?: string;
+  docId?: string;
+  required?: boolean;
+};
 
 const MyProjectScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const queryClient = useQueryClient();
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
 
   const { data: project, isLoading, isError } = useQuery({
     queryKey: ['myProject'],
@@ -33,11 +59,44 @@ const MyProjectScreen: React.FC = () => {
     staleTime: 30000,
   });
 
+  const { data: featureFlags } = useQuery({
+    queryKey: ['featureFlags'],
+    queryFn: () => settingsService.getFeatures(),
+    staleTime: 60000,
+  });
+
+  const customerDocsEnabled =
+    project?.features?.customerDocumentsEnabled ??
+    featureFlags?.customerDocumentsEnabled ??
+    true;
+
+  const { data: myLeads = [] } = useQuery({
+    queryKey: ['myLeads'],
+    queryFn: () => leadService.getMyLeads(),
+    enabled: !isLoading && !project,
+    staleTime: 30000,
+  });
+
+  const primaryLead: Lead | null =
+    myLeads.find((l) => l.status === 'converted') ||
+    myLeads.find((l) => ['pending', 'contacted', 'visited'].includes(l.status)) ||
+    myLeads[0] ||
+    null;
+
+  const LEAD_STATUS_TEXT: Record<string, string> = {
+    pending: 'Your site visit is scheduled. We will confirm the date with you.',
+    contacted: 'Our team will reach out shortly about your site visit.',
+    visited: 'Site visit completed. We are reviewing your property details.',
+    converted: 'You are approved. Installation tracking will appear here once your project is started in our system.',
+    lost: 'This site visit is closed. Contact us if you need help.',
+  };
+
   const cv = project?.customerView;
+  const focusStageId = project?.currentStageId ?? cv?.currentStageId ?? null;
   const visiblePhases = (project?.phases ?? [])
     .map((phase) => ({
       ...phase,
-      stages: phase.stages.filter((s) => s.visibleToCustomer),
+      stages: (phase.stages ?? []).filter((s) => s.visibleToCustomer),
     }))
     .filter((p) => p.stages.length > 0);
 
@@ -62,6 +121,230 @@ const MyProjectScreen: React.FC = () => {
     opacity: interpolate(pulse.value, [1, 1.4], [0.4, 0]),
   }));
 
+  const uploadKey = (target: UploadTarget) =>
+    `${target.stage.stageId}:${target.taskId ?? ''}:${target.docId ?? ''}`;
+
+  const hasDocForTarget = (stage: ProjectStage, target: UploadTarget) =>
+    (stage.documents ?? []).some((d) => {
+      if (d.verificationStatus === 'rejected') return false;
+      if (target.docId) return d.docId === target.docId;
+      if (target.taskId) return d.taskId === target.taskId;
+      return d.name === target.name;
+    });
+
+  const getDocForTarget = (stage: ProjectStage, target: UploadTarget) =>
+    (stage.documents ?? []).find((d) => {
+      if (target.docId) return d.docId === target.docId;
+      if (target.taskId) return d.taskId === target.taskId;
+      return d.name === target.name;
+    });
+
+  const performUpload = async (target: UploadTarget, base64: string, mimeType: string) => {
+    if (!project?.projectId) return;
+
+    if (!customerDocsEnabled && !stageNeedsUploads(target.stage)) {
+      Toast.show({ type: 'error', text1: 'Document uploads are disabled' });
+      return;
+    }
+
+    const key = uploadKey(target);
+    setUploadingKey(key);
+    try {
+      const uploadRes = await uploadProjectFile(base64, mimeType);
+      if (!uploadRes.publicId) {
+        throw new Error('Upload did not return a file reference');
+      }
+      await uploadStageDocument(project.projectId, target.stage.stageId, {
+        name: target.name,
+        publicId: uploadRes.publicId,
+        taskId: target.taskId,
+        docId: target.docId,
+        mimeType: uploadRes.mimeType,
+        resourceType: uploadRes.resourceType,
+        format: uploadRes.format,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['myProject'] });
+      Toast.show({ type: 'success', text1: 'Document uploaded', text2: 'Pending team review' });
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Upload failed', text2: getErrorMessage(err) });
+    } finally {
+      setUploadingKey(null);
+    }
+  };
+
+  const pickImage = async (target: UploadTarget, fromCamera: boolean) => {
+    const perm = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Toast.show({ type: 'error', text1: 'Permission required' });
+      return;
+    }
+
+    const result = fromCamera
+      ? await ImagePicker.launchCameraAsync({ base64: true, quality: 0.8 })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          base64: true,
+          quality: 0.8,
+        });
+
+    if (result.canceled || !result.assets[0]?.base64) return;
+
+    const asset = result.assets[0];
+    const mimeType = asset.mimeType || 'image/jpeg';
+    const dataUri = `data:${mimeType};base64,${asset.base64}`;
+    await performUpload(target, dataUri, mimeType);
+  };
+
+  const pickPdf = async (target: UploadTarget) => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf',
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const dataUri = `data:application/pdf;base64,${base64}`;
+    await performUpload(target, dataUri, 'application/pdf');
+  };
+
+  const showUploadChooser = (target: UploadTarget) => {
+    if (!customerDocsEnabled && !stageNeedsUploads(target.stage)) {
+      Toast.show({ type: 'error', text1: 'Document uploads are disabled' });
+      return;
+    }
+    if (target.stage.status !== 'active' && target.stage.status !== 'delayed') {
+      Toast.show({
+        type: 'info',
+        text1: 'Not ready yet',
+        text2: 'Your team will activate this stage before you can upload.',
+      });
+      return;
+    }
+
+    const options = [
+      { text: 'Take photo', onPress: () => void pickImage(target, true) },
+      { text: 'Choose photo', onPress: () => void pickImage(target, false) },
+      { text: 'Choose PDF', onPress: () => void pickPdf(target) },
+      { text: 'Cancel', style: 'cancel' as const },
+    ];
+
+    if (Platform.OS === 'ios') {
+      Alert.alert('Upload document', target.name, options);
+    } else {
+      Alert.alert('Upload document', target.name, options.slice(0, 3).concat(options.slice(3)));
+    }
+  };
+
+  const viewDocument = async (stage: ProjectStage, docMongoId: string) => {
+    if (!project?.projectId || !docMongoId) return;
+    try {
+      const url = await getDocumentAccessUrl(project.projectId, stage.stageId, docMongoId);
+      await Linking.openURL(url);
+    } catch {
+      Toast.show({ type: 'error', text1: 'Could not open document' });
+    }
+  };
+
+  const customerRequiredSlots = (stage: ProjectStage): RequiredDocumentSlot[] =>
+    (stage.requiredDocuments ?? []).filter(
+      (d) => d.uploadedBy === 'customer' || d.uploadedBy === 'both'
+    );
+
+  const taskAllowsCustomerUpload = (task: ProjectStage['tasks'][number]) =>
+    task.customerUploadPolicy === 'required' ||
+    task.customerUploadPolicy === 'optional' ||
+    (task.docRequired && task.teamUploadPolicy !== 'required' && task.teamUploadPolicy !== 'optional');
+
+  const stageNeedsUploads = (stage: ProjectStage) => {
+    const taskUploads = (stage.tasks ?? []).some(taskAllowsCustomerUpload);
+    const slotUploads = customerRequiredSlots(stage).length > 0;
+    return taskUploads || slotUploads;
+  };
+
+  const buildUploadTargets = (stage: ProjectStage): UploadTarget[] => {
+    const targets: UploadTarget[] = [];
+
+    for (const slot of customerRequiredSlots(stage)) {
+      targets.push({
+        stage,
+        name: slot.label || 'Document',
+        docId: slot.docId,
+        required: slot.required,
+      });
+    }
+
+    for (const task of stage.tasks ?? []) {
+      if (!taskAllowsCustomerUpload(task)) continue;
+      if (!targets.some((t) => t.taskId === task.taskId)) {
+        targets.push({
+          stage,
+          name: task.name,
+          taskId: task.taskId,
+          required: task.customerUploadPolicy === 'required',
+        });
+      }
+    }
+
+    return targets;
+  };
+
+  const renderDocRow = (stage: ProjectStage, target: UploadTarget) => {
+    const uploaded = hasDocForTarget(stage, target);
+    const doc = getDocForTarget(stage, target);
+    const key = uploadKey(target);
+    const isUploading = uploadingKey === key;
+
+    return (
+      <View key={key} style={styles.docRow}>
+        <Text style={uploaded ? styles.docCheck : styles.docPending}>
+          {uploaded ? '✓' : '○'}
+        </Text>
+        <View style={styles.docNameCol}>
+          <Text style={styles.docName}>
+            {target.name}
+            {target.required ? ' *' : ''}
+          </Text>
+          {doc?.verificationStatus === 'rejected' && (
+            <Text style={styles.docRejected}>
+              Rejected{doc.rejectionReason ? `: ${doc.rejectionReason}` : ''}
+            </Text>
+          )}
+          {doc?.verificationStatus === 'pending' && uploaded && (
+            <Text style={styles.docPendingLabel}>Pending review</Text>
+          )}
+          {doc?.verificationStatus === 'verified' && (
+            <Text style={styles.docVerified}>Verified</Text>
+          )}
+        </View>
+        {!uploaded || doc?.verificationStatus === 'rejected' ? (
+          <TouchableOpacity
+            style={styles.docUploadBtn}
+            disabled={isUploading}
+            onPress={() => showUploadChooser(target)}
+          >
+            {isUploading ? (
+              <ActivityIndicator size="small" color="#185FA5" />
+            ) : (
+              <Text style={styles.docUploadText}>Upload</Text>
+            )}
+          </TouchableOpacity>
+        ) : doc?._id ? (
+          <TouchableOpacity
+            style={styles.docViewBtn}
+            onPress={() => void viewDocument(stage, doc._id!)}
+          >
+            <Text style={styles.docViewText}>View</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -76,22 +359,64 @@ const MyProjectScreen: React.FC = () => {
           <ActivityIndicator color="#1D9E75" size="large" />
         </View>
       ) : isError || !project ? (
-        <View style={styles.emptyState}>
-          <Text style={{ fontSize: 48, marginBottom: 16 }}>☀️</Text>
-          <Text style={styles.emptyTitle}>No project yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Your installation project will appear here once your site visit is approved
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyBtn}
-            onPress={() => navigation.navigate('BookSiteVisit', { mode: 'self' })}
-          >
-            <Text style={styles.emptyBtnText}>Book a site visit</Text>
-          </TouchableOpacity>
-        </View>
+        <ScrollView contentContainerStyle={styles.emptyScroll}>
+          <View style={styles.emptyState}>
+            <Text style={{ fontSize: 48, marginBottom: 16 }}>☀️</Text>
+            <Text style={styles.emptyTitle}>
+              {primaryLead ? 'Your solar journey' : 'No project yet'}
+            </Text>
+            {primaryLead ? (
+              <>
+                <View style={styles.leadStatusCard}>
+                  <Text style={styles.leadStatusLabel}>Site visit status</Text>
+                  <Text style={styles.leadStatusValue}>
+                    {primaryLead.status === 'converted'
+                      ? 'Installation confirmed'
+                      : primaryLead.status.charAt(0).toUpperCase() + primaryLead.status.slice(1)}
+                  </Text>
+                  <Text style={styles.leadStatusHint}>
+                    {LEAD_STATUS_TEXT[primaryLead.status] ||
+                      'We will update you as your visit progresses.'}
+                  </Text>
+                  {primaryLead.preferredDate ? (
+                    <Text style={styles.leadStatusMeta}>
+                      Preferred visit:{' '}
+                      {new Date(primaryLead.preferredDate).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                      {primaryLead.timeSlot ? ` · ${primaryLead.timeSlot}` : ''}
+                    </Text>
+                  ) : null}
+                </View>
+                {primaryLead.status !== 'converted' ? (
+                  <TouchableOpacity
+                    style={styles.emptyBtnSecondary}
+                    onPress={() => navigation.getParent()?.navigate('MyLeads' as never)}
+                  >
+                    <Text style={styles.emptyBtnSecondaryText}>View all visits</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : (
+              <Text style={styles.emptySubtitle}>
+                Book a site visit or log in with the same mobile number your GreenPad team used for
+                walk-in registration.
+              </Text>
+            )}
+            {!primaryLead ? (
+              <TouchableOpacity
+                style={styles.emptyBtn}
+                onPress={() => navigation.navigate('BookSiteVisit', { mode: 'self' })}
+              >
+                <Text style={styles.emptyBtnText}>Book a site visit</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </ScrollView>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Current status — simple customer view */}
           <View style={styles.statusCard}>
             {cv?.isDelayed ? (
               <View style={styles.delayBanner}>
@@ -153,7 +478,6 @@ const MyProjectScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Simple timeline grouped by phase */}
           {visiblePhases.map((phase, phaseIndex) => (
             <View key={phase.phaseId} style={styles.phaseBlock}>
               <Text style={styles.phaseTitle}>{phase.name}</Text>
@@ -161,10 +485,16 @@ const MyProjectScreen: React.FC = () => {
                 const isLast =
                   phaseIndex === visiblePhases.length - 1 && index === phase.stages.length - 1;
                 const isDone = stage.status === 'done';
-                const isActive = stage.status === 'active';
                 const isDelayed = stage.status === 'delayed';
-                const isPending = stage.status === 'pending';
-                const pendingTask = stage.tasks?.find((t) => !t.completed);
+                const isLiveStage = stage.status === 'active' || isDelayed;
+                const isFocused = !focusStageId || stage.stageId === focusStageId;
+                const isCurrentStage = isLiveStage && isFocused;
+                const isWaiting = !isDone && !isCurrentStage;
+                const nextTask = stage.tasks?.find((t) => !t.completed);
+                const uploadsEnabled = customerDocsEnabled || stageNeedsUploads(stage);
+                const showDocs =
+                  isCurrentStage && stageNeedsUploads(stage) && uploadsEnabled;
+                const uploadTargets = buildUploadTargets(stage);
 
                 return (
                   <Animated.View
@@ -174,20 +504,26 @@ const MyProjectScreen: React.FC = () => {
                   >
                     <View style={styles.dotColumn}>
                       <View style={styles.dotWrapper}>
-                        {isActive && <Animated.View style={[styles.pulseRing, pulseStyle]} />}
+                        {isCurrentStage && !isDelayed && (
+                          <Animated.View style={[styles.pulseRing, pulseStyle]} />
+                        )}
                         <View
                           style={[
                             styles.dot,
                             isDone && styles.dotDone,
-                            isActive && styles.dotActive,
-                            isDelayed && styles.dotDelayed,
-                            isPending && styles.dotPending,
+                            isCurrentStage && !isDelayed && styles.dotActive,
+                            isCurrentStage && isDelayed && styles.dotDelayed,
+                            isWaiting && styles.dotPending,
                           ]}
                         >
                           {isDone && <Ionicons name="checkmark" size={12} color="#fff" />}
-                          {isActive && <Ionicons name="refresh" size={10} color="#185FA5" />}
-                          {isDelayed && <Ionicons name="warning" size={10} color="#BA7517" />}
-                          {isPending && <Ionicons name="time-outline" size={10} color="#999" />}
+                          {isCurrentStage && !isDelayed && (
+                            <Ionicons name="refresh" size={10} color="#185FA5" />
+                          )}
+                          {isCurrentStage && isDelayed && (
+                            <Ionicons name="warning" size={10} color="#BA7517" />
+                          )}
+                          {isWaiting && <Ionicons name="time-outline" size={10} color="#999" />}
                         </View>
                       </View>
                       {!isLast && <View style={[styles.connector, isDone && styles.connectorDone]} />}
@@ -199,20 +535,27 @@ const MyProjectScreen: React.FC = () => {
                         style={[
                           styles.stageStatus,
                           isDone && { color: '#1D9E75' },
-                          isActive && { color: '#185FA5' },
-                          isDelayed && { color: '#BA7517' },
+                          isCurrentStage && !isDelayed && { color: '#185FA5' },
+                          isCurrentStage && isDelayed && { color: '#BA7517' },
                         ]}
                       >
                         {isDone
                           ? 'Completed'
-                          : isActive
-                            ? pendingTask
-                              ? `Pending: ${pendingTask.name}`
-                              : 'In progress'
-                            : isDelayed
-                              ? 'Delayed'
+                          : isCurrentStage && isDelayed
+                            ? 'Delayed'
+                            : isCurrentStage
+                              ? nextTask
+                                ? `In progress · ${nextTask.name}`
+                                : 'In progress'
                               : 'Waiting'}
                       </Text>
+
+                      {showDocs && uploadTargets.length > 0 ? (
+                        <View style={styles.docsCard}>
+                          <Text style={styles.docsCardTitle}>Documents needed</Text>
+                          {uploadTargets.map((target) => renderDocRow(stage, target))}
+                        </View>
+                      ) : null}
                     </View>
                   </Animated.View>
                 );
@@ -373,6 +716,45 @@ const styles = StyleSheet.create({
   stageName: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
   stageNameDone: { color: '#555' },
   stageStatus: { fontSize: 12, color: '#aaa', marginTop: 2 },
+  docsCard: {
+    backgroundColor: '#EBF3FB',
+    borderWidth: 1,
+    borderColor: '#C5DCF5',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+  },
+  docsCardTitle: { fontSize: 14, fontWeight: '600', color: '#185FA5', marginBottom: 6 },
+  docRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  docCheck: { fontSize: 14, color: '#1D9E75', width: 18, textAlign: 'center' },
+  docPending: { fontSize: 14, color: '#999', width: 18, textAlign: 'center' },
+  docNameCol: { flex: 1 },
+  docName: { fontSize: 14, color: '#1a1a1a' },
+  docRejected: { fontSize: 11, color: '#DC2626', marginTop: 2 },
+  docPendingLabel: { fontSize: 11, color: '#888', marginTop: 2 },
+  docVerified: { fontSize: 11, color: '#1D9E75', marginTop: 2 },
+  docUploadBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#185FA5',
+    minWidth: 64,
+    alignItems: 'center',
+  },
+  docUploadText: { fontSize: 12, fontWeight: '600', color: '#185FA5' },
+  docViewBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#1D9E75',
+    minWidth: 64,
+    alignItems: 'center',
+  },
+  docViewText: { fontSize: 12, fontWeight: '600', color: '#1D9E75' },
   contactCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -417,9 +799,33 @@ const styles = StyleSheet.create({
     borderColor: '#1D9E75',
   },
   callText: { color: '#1D9E75', fontSize: 14, fontWeight: '600' },
+  emptyScroll: { flexGrow: 1, paddingBottom: 32 },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyTitle: { fontSize: 18, fontWeight: '600', color: '#1a1a1a', marginBottom: 8 },
   emptySubtitle: { fontSize: 14, color: '#888', textAlign: 'center', lineHeight: 20 },
+  leadStatusCard: {
+    width: '100%',
+    backgroundColor: '#f0fdf4',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  leadStatusLabel: { fontSize: 12, fontWeight: '600', color: '#166534', textTransform: 'uppercase' },
+  leadStatusValue: { fontSize: 18, fontWeight: '700', color: '#14532d', marginTop: 6 },
+  leadStatusHint: { fontSize: 13, color: '#3f6212', marginTop: 8, lineHeight: 18 },
+  leadStatusMeta: { fontSize: 12, color: '#4d7c0f', marginTop: 10 },
+  emptyBtnSecondary: {
+    marginTop: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1D9E75',
+  },
+  emptyBtnSecondaryText: { color: '#1D9E75', fontWeight: '600', fontSize: 14 },
   emptyBtn: {
     marginTop: 24,
     backgroundColor: '#1D9E75',

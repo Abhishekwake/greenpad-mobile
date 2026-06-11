@@ -1,10 +1,12 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { logActivity } = require('../utils/activityLog');
 const User = require('../models/User');
 const AdminAccount = require('../models/AdminAccount');
 const { generateOTP, storeOTP, verifyOTP, sendOTPViaSMS } = require('../utils/sendOTP');
 const { runWithTransaction, awardCoins, MILESTONE_TYPES } = require('../utils/coinService');
 const { getCoinSettings } = require('../utils/getCoinSettings');
+const { linkUserToLeadsByPhone } = require('../utils/linkUserToLeadsByPhone');
 
 function signToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -113,6 +115,9 @@ exports.verifyOTP = async (req, res, next) => {
 
       user = await User.findById(user._id);
     }
+
+    await linkUserToLeadsByPhone(user);
+    user = await User.findById(user._id);
 
     const token = signToken(user._id);
 
@@ -232,6 +237,15 @@ exports.adminLogin = async (req, res, next) => {
 
     admin.lastLoginAt = new Date();
     await admin.save();
+
+    await logActivity({
+      actorType: 'admin',
+      actorId: String(admin._id),
+      actorName: admin.name,
+      action: 'admin_login',
+      entityType: 'AdminAccount',
+      entityId: admin._id,
+    });
 
     const token = signAdminToken(admin);
 

@@ -1,4 +1,3 @@
-/** Flatten phases → stages (legacy flat `stages` supported). */
 function flattenStagesFromTemplate(template) {
   if (template?.phases?.length) {
     const result = [];
@@ -29,7 +28,20 @@ function flattenStagesFromTemplate(template) {
     }));
 }
 
-function mergeStageWithStatus(stage, stageStatus = {}) {
+const {
+  normalizeTaskUpload,
+  resolveUploadPolicy,
+  resolveTeamUploadPolicy,
+  effectiveCustomerUploadPolicy,
+} = require('./uploadPolicy');
+
+function resolveMediaPolicy(task, taskStatus = {}) {
+  if (taskStatus.mediaUploadPolicy) return taskStatus.mediaUploadPolicy;
+  return task.mediaUploadPolicy || 'none';
+}
+
+function mergeStageWithStatus(stage, stageStatus = {}, options = {}) {
+  const { includeDocUrls = false, stripInternalComments = false } = options;
   const taskStatusMap = new Map((stageStatus.tasks || []).map((t) => [t.taskId, t]));
   const removedIds = new Set(stageStatus.removedTaskIds || []);
   const templateTaskIds = new Set((stage.tasks || []).map((t) => t.taskId));
@@ -37,29 +49,42 @@ function mergeStageWithStatus(stage, stageStatus = {}) {
   const mergedTemplateTasks = (stage.tasks || [])
     .filter((task) => !removedIds.has(task.taskId))
     .map((task) => {
-    const taskStatus = taskStatusMap.get(task.taskId) || {};
+    const tpl = normalizeTaskUpload(task);
+    const ts = taskStatusMap.get(task.taskId) || {};
     return {
       taskId: task.taskId,
-      name: taskStatus.name || task.name,
-      assignedRole: taskStatus.assignedRole || task.assignedRole,
-      docRequired: taskStatus.docRequired ?? task.docRequired,
-      completed: taskStatus.completed || false,
-      completedBy: taskStatus.completedBy,
-      completedAt: taskStatus.completedAt,
-      comments: taskStatus.comments || [],
-      photos: taskStatus.photos || [],
-      documents: taskStatus.documents || [],
+      name: ts.name || tpl.name,
+      assignedRole: ts.assignedRole || tpl.assignedRole,
+      docRequired: tpl.docRequired,
+      customerUploadPolicy: effectiveCustomerUploadPolicy(tpl, {
+        stageVisibleToCustomer: stage.visibleToCustomer !== false,
+      }),
+      teamUploadPolicy: tpl.teamUploadPolicy,
+      mediaUploadPolicy: resolveMediaPolicy(tpl, ts),
+      completed: ts.completed || false,
+      completedBy: ts.completedBy,
+      completedAt: ts.completedAt,
+      comments: ts.comments || [],
+      photos: ts.photos || [],
+      documents: ts.documents || [],
       isCustom: false,
     };
   });
 
   const customTasks = (stageStatus.tasks || [])
     .filter((t) => t.taskId && !templateTaskIds.has(t.taskId) && t.name)
-    .map((t) => ({
+    .map((t) => {
+      const normalized = normalizeTaskUpload(t);
+      return {
       taskId: t.taskId,
       name: t.name,
       assignedRole: t.assignedRole || '',
-      docRequired: t.docRequired ?? false,
+      docRequired: normalized.docRequired,
+      customerUploadPolicy: effectiveCustomerUploadPolicy(normalized, {
+        stageVisibleToCustomer: stage.visibleToCustomer !== false,
+      }),
+      teamUploadPolicy: normalized.teamUploadPolicy,
+      mediaUploadPolicy: normalized.mediaUploadPolicy,
       completed: t.completed || false,
       completedBy: t.completedBy,
       completedAt: t.completedAt,
@@ -67,31 +92,121 @@ function mergeStageWithStatus(stage, stageStatus = {}) {
       photos: t.photos || [],
       documents: t.documents || [],
       isCustom: true,
-    }));
+    };
+    });
 
   return {
     stageId: stage.stageId,
     name: stage.name,
     order: stage.order,
     visibleToCustomer: stage.visibleToCustomer,
+    documentPolicy: stage.documentPolicy || 'none',
+    approvalRequired: (stage.requiresApproval ?? stage.approvalRequired) || false,
+    stageColor: stage.color || stage.stageColor || null,
+    stageIcon: stage.icon || stage.stageIcon || null,
+    color: stage.color || stage.stageColor || '#1D9E75',
+    icon: stage.icon || stage.stageIcon || '📋',
+    requiresApproval: (stage.requiresApproval ?? stage.approvalRequired) || false,
+    approvalLabel: stage.approvalLabel || 'Approval required',
+    requiredDocuments: stage.requiredDocuments || [],
+    estimatedDays: stage.estimatedDays ?? null,
+    allowStageComments: stage.allowStageComments || false,
     status: stageStatus.status || 'pending',
     delayReason: stageStatus.delayReason,
     delayExpectedDate: stageStatus.delayExpectedDate,
     completedAt: stageStatus.completedAt,
+    approvalStatus: stageStatus.approvalStatus || 'none',
+    approvedBy: stageStatus.approvedBy,
+    approvedAt: stageStatus.approvedAt,
+    stageComments: stageStatus.stageComments || [],
+    stageDocuments: stageStatus.stageDocuments || [],
+    comments: normalizeStageComments(stageStatus).filter(
+      (c) => !stripInternalComments || !c.isInternal
+    ),
+    documents: normalizeStageDocuments(stageStatus, { includeUrls: includeDocUrls }),
+    media: (stageStatus.media || []).map((m) => ({
+      _id: m._id,
+      type: m.type,
+      url: m.url,
+      caption: m.caption || '',
+      uploadedBy: m.uploadedBy || 'Unknown',
+      uploadedAt: m.uploadedAt,
+    })),
     tasks: [...mergedTemplateTasks, ...customTasks],
   };
 }
 
-/** Merge template + project status into flat stage list (backward compatible). */
-function mergeStagesWithTemplate(template, stageStatuses) {
+function normalizeStageComments(stageStatus = {}) {
+  if (stageStatus.comments?.length) {
+    return stageStatus.comments.map((c) => ({
+      _id: c._id,
+      text: c.text,
+      createdBy: c.createdBy || 'Unknown',
+      createdAt: c.createdAt,
+      isInternal: Boolean(c.isInternal),
+    }));
+  }
+  return (stageStatus.stageComments || []).map((c) => ({
+    text: c.text,
+    createdBy: c.by || c.createdBy || 'Unknown',
+    createdAt: c.at || c.createdAt,
+    isInternal: false,
+  }));
+}
+
+function findTemplateStage(template, stageId) {
+  return flattenStagesFromTemplate(template).find((s) => s.stageId === stageId);
+}
+
+function findTemplateTask(template, stageId, taskId) {
+  const stage = findTemplateStage(template, stageId);
+  return stage?.tasks?.find((t) => t.taskId === taskId);
+}
+
+function normalizeStageDocuments(stageStatus = {}, { includeUrls = false } = {}) {
+  const mapDoc = (d) => {
+    const base = {
+      _id: d._id,
+      name: d.name || 'Document',
+      docId: d.docId || undefined,
+      taskId: d.taskId || undefined,
+      mimeType: d.mimeType || undefined,
+      uploadedBy: d.uploadedBy || 'Unknown',
+      uploadedAt: d.uploadedAt,
+      verificationStatus: d.verificationStatus || 'pending',
+      rejectionReason: d.rejectionReason || '',
+      hasFile: Boolean(d.cloudinaryPublicId || d.url),
+    };
+    if (includeUrls) {
+      base.url = d.url;
+      base.cloudinaryPublicId = d.cloudinaryPublicId;
+    }
+    return base;
+  };
+
+  if (stageStatus.documents?.length) {
+    return stageStatus.documents.map(mapDoc);
+  }
+  return (stageStatus.stageDocuments || []).map((d) => ({
+    name: d.name || 'Document',
+    uploadedBy: d.uploadedBy || 'Unknown',
+    uploadedAt: d.uploadedAt,
+    verificationStatus: 'pending',
+    rejectionReason: '',
+    hasFile: Boolean(d.url),
+    ...(includeUrls ? { url: d.url } : {}),
+  }));
+}
+
+function mergeStagesWithTemplate(template, stageStatuses, options = {}) {
   const statusMap = new Map((stageStatuses || []).map((s) => [s.stageId, s]));
   return flattenStagesFromTemplate(template).map((stage) =>
-    mergeStageWithStatus(stage, statusMap.get(stage.stageId))
+    mergeStageWithStatus(stage, statusMap.get(stage.stageId), options)
   );
 }
 
 /** Merge template + project status into phase → stage → task hierarchy. */
-function mergePhasesWithTemplate(template, stageStatuses) {
+function mergePhasesWithTemplate(template, stageStatuses, options = {}) {
   const statusMap = new Map((stageStatuses || []).map((s) => [s.stageId, s]));
 
   if (template?.phases?.length) {
@@ -103,11 +218,11 @@ function mergePhasesWithTemplate(template, stageStatuses) {
         order: phase.order,
         stages: [...(phase.stages || [])]
           .sort((a, b) => a.order - b.order)
-          .map((stage) => mergeStageWithStatus(stage, statusMap.get(stage.stageId))),
+          .map((stage) => mergeStageWithStatus(stage, statusMap.get(stage.stageId), options)),
       }));
   }
 
-  const flatStages = mergeStagesWithTemplate(template, stageStatuses);
+  const flatStages = mergeStagesWithTemplate(template, stageStatuses, options);
   if (flatStages.length === 0) return [];
 
   return [
@@ -121,16 +236,22 @@ function mergePhasesWithTemplate(template, stageStatuses) {
 }
 
 /** Simple customer-facing snapshot. */
-function buildCustomerView(phases) {
+function buildCustomerView(phases, currentStageId) {
   const allStages = phases.flatMap((p) =>
     p.stages.map((s) => ({ ...s, phaseId: p.phaseId, phaseName: p.name, phaseOrder: p.order }))
   );
 
   const visible = allStages.filter((s) => s.visibleToCustomer);
-  const activeStage =
-    visible.find((s) => s.status === 'active') ||
-    visible.find((s) => s.status === 'delayed') ||
-    visible.find((s) => s.status === 'pending');
+  let activeStage = null;
+  if (currentStageId) {
+    activeStage = visible.find((s) => s.stageId === currentStageId) || null;
+  }
+  if (!activeStage) {
+    activeStage =
+      visible.find((s) => s.status === 'active') ||
+      visible.find((s) => s.status === 'delayed') ||
+      visible.find((s) => s.status === 'pending');
+  }
 
   const activePhase = activeStage
     ? phases.find((p) => p.stages.some((s) => s.stageId === activeStage.stageId))
@@ -144,6 +265,7 @@ function buildCustomerView(phases) {
   else if (activeStage?.status === 'active') statusLabel = 'In Progress';
 
   return {
+    currentStageId: activeStage?.stageId || null,
     currentPhase: activePhase?.name || null,
     currentStage: activeStage?.name || null,
     currentWork: pendingTask?.name || null,
@@ -253,10 +375,15 @@ function needsStageSync(projectStageStatuses, template) {
 
 module.exports = {
   flattenStagesFromTemplate,
+  findTemplateStage,
+  findTemplateTask,
   mergeStagesWithTemplate,
   mergePhasesWithTemplate,
   buildCustomerView,
   summarizeStageStatuses,
   syncProjectStageStatuses,
   needsStageSync,
+  resolveUploadPolicy,
+  resolveTeamUploadPolicy,
+  resolveMediaPolicy,
 };

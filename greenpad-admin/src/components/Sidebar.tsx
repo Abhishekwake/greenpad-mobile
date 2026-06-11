@@ -15,6 +15,7 @@ import {
   Folder,
   GitBranch,
   Shield,
+  Film,
   LogOut,
   UserCog,
   Scale,
@@ -37,12 +38,6 @@ const nav: NavItem[] = [
   { href: "/rewards", label: "Rewards", icon: Gift },
   { href: "/redemptions", label: "Redemptions", icon: Package },
   { href: "/transactions", label: "Transactions", icon: CreditCard },
-  {
-    href: "/settings",
-    label: "Coin rules",
-    icon: SlidersHorizontal,
-    roles: ["super_admin"],
-  },
 ];
 
 const navSections: { title: string; items: NavItem[] }[] = [
@@ -55,6 +50,8 @@ const navSections: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/workflow", label: "Workflow builder", icon: GitBranch },
       { href: "/roles-config", label: "Workflow roles", icon: Shield },
+      { href: "/reels", label: "Reels", icon: Film },
+      { href: "/settings-config", label: "Settings", icon: SlidersHorizontal, roles: ["super_admin"] },
     ],
   },
   {

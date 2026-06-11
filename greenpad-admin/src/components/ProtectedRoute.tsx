@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { clearAdminSession, isAdminToken } from "@/lib/adminRole";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -9,7 +10,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("adminToken") : null;
-    if (!token) {
+    if (!token || !isAdminToken(token)) {
+      clearAdminSession();
       router.replace("/login");
       return;
     }

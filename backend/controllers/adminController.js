@@ -11,11 +11,38 @@ const {
   ALL_ADMIN_SETTING_KEYS,
 } = require('../utils/getCoinSettings');
 const { notifyLeadStatusChange } = require('../utils/pushNotifications');
+const { resolveCustomerForLead } = require('../utils/resolveCustomerForLead');
 const { runWithTransaction, awardCoins, MILESTONE_TYPES } = require('../utils/coinService');
+const { logActivity } = require('../utils/activityLog');
+const Project = require('../models/Project');
+const { summarizeStageStatuses } = require('../utils/workflowHelpers');
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+function startOfDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function endOfWeek(d = new Date()) {
+  const x = startOfDay(d);
+  const day = x.getDay();
+  const daysUntilSunday = day === 0 ? 0 : 7 - day;
+  x.setDate(x.getDate() + daysUntilSunday);
+  return endOfDay(x);
+}
+
+const LEAD_SOURCES = ['mobile', 'manual', 'walk_in', 'referral'];
+const FOLLOW_UP_STATUSES = ['called', 'no_answer', 'callback', 'meeting_set'];
 
 function last30DaysKeys() {
   const keys = [];
@@ -44,6 +71,14 @@ exports.getStats = async (req, res, next) => {
       signupsAgg,
       recentTransactions,
       pendingRedemptions,
+      followUpsDueToday,
+      followUpsDueRaw,
+      recentLeadsForActivity,
+      recentProjectsForActivity,
+      recentLeadsForCrmLog,
+      activeProjects,
+      delayedProjects,
+      projectOverview,
     ] = await Promise.all([
       User.countDocuments(),
       Lead.countDocuments(),
@@ -69,6 +104,40 @@ exports.getStats = async (req, res, next) => {
         .limit(10)
         .lean(),
       Transaction.countDocuments({ type: 'redeem', status: 'pending' }),
+      Lead.countDocuments({
+        status: { $nin: ['converted', 'lost'] },
+        nextFollowUpDate: { $ne: null, $lte: endOfDay() },
+      }),
+      Lead.find({
+        status: { $nin: ['converted', 'lost'] },
+        nextFollowUpDate: { $ne: null, $lte: endOfDay() },
+      })
+        .sort({ nextFollowUpDate: 1 })
+        .limit(5)
+        .select('name phone nextFollowUpDate followUps')
+        .lean(),
+      Lead.find()
+        .sort({ updatedAt: -1 })
+        .limit(5)
+        .select('name status updatedAt')
+        .lean(),
+      Project.find()
+        .sort({ updatedAt: -1 })
+        .limit(5)
+        .select('customerName updatedAt')
+        .lean(),
+      Lead.find()
+        .sort({ updatedAt: -1 })
+        .limit(20)
+        .select('name phone status source followUps updatedAt createdAt createdByAdmin')
+        .lean(),
+      Project.countDocuments({ status: 'active' }),
+      Project.countDocuments({ 'stageStatuses.status': 'delayed' }),
+      Project.find({ status: 'active' })
+        .sort({ updatedAt: -1 })
+        .limit(5)
+        .select('customerName currentStageId stageStatuses status')
+        .lean(),
     ]);
 
     const dayMap = signupsAgg.reduce((acc, row) => {
@@ -80,6 +149,92 @@ exports.getStats = async (req, res, next) => {
       date,
       count: dayMap[date] || 0,
     }));
+
+    const followUpsDue = followUpsDueRaw.map((l) => {
+      const followUps = l.followUps || [];
+      const last = followUps.length ? followUps[followUps.length - 1] : null;
+      return {
+        _id: l._id,
+        name: l.name,
+        phone: l.phone,
+        nextFollowUpDate: l.nextFollowUpDate,
+        lastFollowUpNote: last?.note || '',
+      };
+    });
+
+    const followUpsDueLeads = followUpsDue.map((l) => ({
+      _id: l._id,
+      name: l.name,
+      phone: l.phone,
+      nextFollowUpDate: l.nextFollowUpDate,
+      status: '',
+    }));
+
+    const recentActivity = [
+      ...recentLeadsForActivity.map((l) => ({
+        type: 'lead',
+        text: `Lead ${l.name} → ${l.status}`,
+        time: l.updatedAt,
+        color: 'blue',
+      })),
+      ...recentProjectsForActivity.map((p) => ({
+        type: 'project',
+        text: `Project ${p.customerName} stage updated`,
+        time: p.updatedAt,
+        color: 'green',
+      })),
+    ]
+      .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+      .slice(0, 10);
+
+    const recentCrmActivity = [];
+    for (const lead of recentLeadsForCrmLog) {
+      const latestFollowUp = lead.followUps?.length
+        ? [...lead.followUps].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )[0]
+        : null;
+      if (latestFollowUp?.createdAt) {
+        recentCrmActivity.push({
+          id: `followup-${lead._id}-${latestFollowUp.createdAt}`,
+          type: 'follow_up',
+          leadId: lead._id,
+          leadName: lead.name,
+          description: latestFollowUp.note?.slice(0, 120) || 'Follow-up logged',
+          actor: latestFollowUp.createdBy || 'Admin',
+          at: latestFollowUp.createdAt,
+        });
+      }
+      recentCrmActivity.push({
+        id: `lead-${lead._id}-${lead.updatedAt}`,
+        type: 'lead_update',
+        leadId: lead._id,
+        leadName: lead.name,
+        description: `Lead status: ${lead.status}`,
+        actor: lead.createdByAdmin || 'System',
+        at: lead.updatedAt || lead.createdAt,
+      });
+    }
+    recentCrmActivity.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+    const projectOverviewRows = projectOverview.map((p) => {
+      const summary = summarizeStageStatuses(p.stageStatuses);
+      const pct = summary.total > 0 ? Math.round((summary.done / summary.total) * 100) : 0;
+      return {
+        _id: p._id,
+        customerName: p.customerName,
+        currentStageId: p.currentStageId,
+        progressPct: pct,
+        delayedCount: summary.delayedCount,
+      };
+    });
+
+    let avgProjectProgress = 0;
+    if (projectOverviewRows.length) {
+      avgProjectProgress = Math.round(
+        projectOverviewRows.reduce((s, r) => s + r.progressPct, 0) / projectOverviewRows.length
+      );
+    }
 
     res.json({
       success: true,
@@ -96,6 +251,15 @@ exports.getStats = async (req, res, next) => {
         signupsPerDay,
         recentTransactions,
         pendingRedemptions,
+        followUpsDueToday,
+        followUpsDue,
+        followUpsDueLeads,
+        recentActivity,
+        recentCrmActivity: recentCrmActivity.slice(0, 15),
+        activeProjects,
+        avgProjectProgress,
+        delayedProjects,
+        projectOverview: projectOverviewRows,
       },
     });
   } catch (error) {
@@ -103,16 +267,77 @@ exports.getStats = async (req, res, next) => {
   }
 };
 
-// GET /api/admin/leads?status=&search=&page=&limit=
+// GET /api/admin/leads/summary — stat cards for leads page
+exports.getLeadsSummary = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endToday = endOfDay(now);
+
+    const [totalLeads, followUpDueToday, convertedThisMonth, lostThisMonth] = await Promise.all([
+      Lead.countDocuments({ status: { $ne: 'voided' } }),
+      Lead.countDocuments({
+        status: { $nin: ['converted', 'lost', 'voided'] },
+        nextFollowUpDate: { $ne: null, $lte: endToday },
+      }),
+      Lead.countDocuments({ status: 'converted', updatedAt: { $gte: startOfMonth } }),
+      Lead.countDocuments({ status: 'lost', updatedAt: { $gte: startOfMonth } }),
+    ]);
+
+    res.json({
+      success: true,
+      data: { totalLeads, followUpDueToday, convertedThisMonth, lostThisMonth },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/admin/leads?status=&search=&page=&limit=&source=&followUpDue=&followUpFilter=&sort=
 exports.getLeads = async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20, search } = req.query;
+    const { status, page = 1, limit = 20, search, source, followUpDue, followUpFilter, sort } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const filter = {};
-    const leadStatuses = ['pending', 'contacted', 'visited', 'converted', 'lost'];
+    const leadStatuses = ['pending', 'contacted', 'visited', 'converted', 'lost', 'voided'];
     if (status && leadStatuses.includes(status)) {
       filter.status = status;
+    } else {
+      filter.status = { $ne: 'voided' };
+    }
+
+    if (source && LEAD_SOURCES.includes(String(source))) {
+      if (String(source) === 'mobile') {
+        filter.$and = filter.$and || [];
+        filter.$and.push({
+          $or: [{ source: 'mobile' }, { source: { $exists: false } }, { source: null }],
+        });
+      } else {
+        filter.source = String(source);
+      }
+    }
+
+    const activeLeadFilter = { status: { $nin: ['converted', 'lost', 'voided'] } };
+
+    if (followUpDue === 'true') {
+      Object.assign(filter, activeLeadFilter);
+      filter.nextFollowUpDate = { $ne: null, $lte: endOfDay() };
+    } else if (followUpFilter && followUpFilter !== 'all') {
+      Object.assign(filter, activeLeadFilter);
+      filter.nextFollowUpDate = { $ne: null };
+      const todayStart = startOfDay();
+      const todayEnd = endOfDay();
+
+      if (followUpFilter === 'today') {
+        filter.nextFollowUpDate.$gte = todayStart;
+        filter.nextFollowUpDate.$lte = todayEnd;
+      } else if (followUpFilter === 'week') {
+        filter.nextFollowUpDate.$gte = todayStart;
+        filter.nextFollowUpDate.$lte = endOfWeek();
+      } else if (followUpFilter === 'overdue') {
+        filter.nextFollowUpDate.$lt = todayStart;
+      }
     }
 
     if (search && String(search).trim()) {
@@ -124,11 +349,16 @@ exports.getLeads = async (req, res, next) => {
       ];
     }
 
+    const sortSpec =
+      sort === 'nextFollowUpDate'
+        ? { nextFollowUpDate: 1, createdAt: -1 }
+        : { createdAt: -1 };
+
     const [leads, total] = await Promise.all([
       Lead.find(filter)
         .populate('userId', 'name phone referralCode')
         .populate('assignedAgent', 'name role phone email isActive')
-        .sort({ createdAt: -1 })
+        .sort(sortSpec)
         .skip(skip)
         .limit(Number(limit))
         .lean(),
@@ -146,6 +376,65 @@ exports.getLeads = async (req, res, next) => {
           pages: Math.ceil(total / Number(limit)) || 1,
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/admin/lead/:id/void — soft void site visit (reason required; not a hard delete)
+exports.voidLead = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const trimmed = reason != null ? String(reason).trim() : '';
+
+    if (trimmed.length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'A void reason is required (at least 5 characters)',
+      });
+    }
+
+    const lead = await Lead.findById(id);
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+    if (lead.status === 'voided') {
+      return res.status(400).json({ success: false, message: 'Site visit is already voided' });
+    }
+
+    const activeProject = await Project.findOne({ leadId: lead._id, status: { $ne: 'voided' } });
+    if (activeProject) {
+      return res.status(400).json({
+        success: false,
+        message: 'Void the linked installation project first, or mark it completed, before voiding this site visit.',
+      });
+    }
+
+    lead.status = 'voided';
+    lead.voidedAt = new Date();
+    lead.voidedBy = req.admin?.name || 'Admin';
+    lead.voidReason = trimmed;
+    await lead.save();
+
+    await logActivity({
+      req,
+      action: 'lead_voided',
+      entityType: 'Lead',
+      entityId: lead._id,
+      meta: { reason: trimmed },
+    });
+
+    const populated = await Lead.findById(lead._id)
+      .populate('userId', 'name phone referralCode')
+      .populate('assignedAgent', 'name role phone email isActive')
+      .lean();
+
+    res.json({
+      success: true,
+      message: 'Site visit voided. It will no longer appear in active enquiries.',
+      data: populated,
     });
   } catch (error) {
     next(error);
@@ -170,89 +459,292 @@ exports.updateLeadStatus = async (req, res, next) => {
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
-
-    const previousStatus = lead.status;
-    const rawReferrer = lead.userId;
-    const referrerId =
-      rawReferrer && typeof rawReferrer === 'object' && rawReferrer._id
-        ? rawReferrer._id
-        : rawReferrer;
-
-    const shouldAwardVisit =
-      status === 'visited' && previousStatus !== 'visited' && previousStatus !== 'lost';
-    const shouldAwardConvert =
-      status === 'converted' && previousStatus !== 'converted' && previousStatus !== 'lost';
-    const shouldAwardVisitOnConvert =
-      shouldAwardConvert && previousStatus !== 'visited' && previousStatus !== 'lost';
-
-    let warning;
-
-    if (status !== previousStatus) {
-      await runWithTransaction(async (session) => {
-        lead.status = status;
-        await lead.save({ session });
-
-        if (!referrerId) {
-          return;
-        }
-
-        const referrer = await User.findById(referrerId).session(session);
-        if (!referrer) {
-          warning = 'Referring user not found; no coins were awarded';
-          return;
-        }
-
-        const coinCfg = await getCoinSettings();
-        const visitCoins = coinCfg.coinsLeadVisited;
-        const visitOnConvertCoins = coinCfg.coinsLeadVisitMilestoneOnConvert;
-        const convertCoins = coinCfg.coinsLeadConverted;
-
-        if (shouldAwardVisit) {
-          await awardCoins({
-            session,
-            userId: referrer._id,
-            amount: visitCoins,
-            description: `Lead visited: ${lead.name}`,
-            relatedTo: { model: 'Lead', id: lead._id },
-            milestoneType: MILESTONE_TYPES.LEAD_VISITED,
-          });
-        }
-
-        if (shouldAwardVisitOnConvert) {
-          await awardCoins({
-            session,
-            userId: referrer._id,
-            amount: visitOnConvertCoins,
-            description: `Lead visited: ${lead.name}`,
-            relatedTo: { model: 'Lead', id: lead._id },
-            milestoneType: MILESTONE_TYPES.LEAD_VISIT_ON_CONVERT,
-          });
-        }
-
-        if (shouldAwardConvert) {
-          await awardCoins({
-            session,
-            userId: referrer._id,
-            amount: convertCoins,
-            description: `Installation confirmed: ${lead.name}`,
-            relatedTo: { model: 'Lead', id: lead._id },
-            milestoneType: MILESTONE_TYPES.LEAD_CONVERTED,
-          });
-        }
+    if (lead.status === 'voided') {
+      return res.status(400).json({
+        success: false,
+        message: 'Voided site visits cannot be updated. Create a new enquiry if needed.',
       });
     }
 
+    const previousStatus = lead.status;
+    let warning;
+
+    // ── 1. Persist the status change FIRST (no transaction needed) ────────
+    //    This guarantees the status is saved even if coin awarding fails later.
     if (status !== previousStatus) {
+      await Lead.updateOne({ _id: id }, { $set: { status } });
+    }
+
+    // ── 2. Try to award coins in a separate transaction ───────────────────
+    //    If this fails the status is already saved, so only coins are lost.
+    if (status !== previousStatus) {
+      const rawReferrer = lead.userId;
+      const referrerId =
+        rawReferrer && typeof rawReferrer === 'object' && rawReferrer._id
+          ? rawReferrer._id
+          : rawReferrer;
+
+      const shouldAwardVisit =
+        status === 'visited' && previousStatus !== 'visited' && previousStatus !== 'lost';
+      const shouldAwardConvert =
+        status === 'converted' && previousStatus !== 'converted' && previousStatus !== 'lost';
+      const shouldAwardVisitOnConvert =
+        shouldAwardConvert && previousStatus !== 'visited' && previousStatus !== 'lost';
+
+      const needsCoins =
+        referrerId && (shouldAwardVisit || shouldAwardConvert || shouldAwardVisitOnConvert);
+
+      if (needsCoins) {
+        try {
+          await runWithTransaction(async (session) => {
+            const referrer = await User.findById(referrerId).session(session);
+            if (!referrer) {
+              warning = 'Referring user not found; no coins were awarded';
+              return;
+            }
+
+            const coinCfg = await getCoinSettings();
+            const visitCoins = coinCfg.coinsLeadVisited;
+            const visitOnConvertCoins = coinCfg.coinsLeadVisitMilestoneOnConvert;
+            const convertCoins = coinCfg.coinsLeadConverted;
+
+            if (shouldAwardVisit) {
+              await awardCoins({
+                session,
+                userId: referrer._id,
+                amount: visitCoins,
+                description: `Lead visited: ${lead.name}`,
+                relatedTo: { model: 'Lead', id: lead._id },
+                milestoneType: MILESTONE_TYPES.LEAD_VISITED,
+              });
+            }
+
+            if (shouldAwardVisitOnConvert) {
+              await awardCoins({
+                session,
+                userId: referrer._id,
+                amount: visitOnConvertCoins,
+                description: `Lead visited: ${lead.name}`,
+                relatedTo: { model: 'Lead', id: lead._id },
+                milestoneType: MILESTONE_TYPES.LEAD_VISIT_ON_CONVERT,
+              });
+            }
+
+            if (shouldAwardConvert) {
+              await awardCoins({
+                session,
+                userId: referrer._id,
+                amount: convertCoins,
+                description: `Installation confirmed: ${lead.name}`,
+                relatedTo: { model: 'Lead', id: lead._id },
+                milestoneType: MILESTONE_TYPES.LEAD_CONVERTED,
+              });
+            }
+          });
+        } catch (coinErr) {
+          console.error('[updateLeadStatus] coin awarding failed (status was saved):', coinErr?.message || coinErr);
+          warning = 'Status saved but coin awarding failed — check logs';
+        }
+      }
+
+      // fire-and-forget notifications & activity log
       notifyLeadStatusChange(lead, previousStatus, status).catch((err) => {
         console.error('[push] lead status notify failed:', err?.message || err);
       });
+      logActivity({
+        req,
+        action: 'lead_status_changed',
+        entityType: 'Lead',
+        entityId: lead._id,
+        meta: { from: previousStatus, to: status },
+      }).catch(() => {});
     }
+
+    // ── 3. Re-fetch the lead with populated references for the response ───
+    const updated = await Lead.findById(id)
+      .populate('userId', 'name phone referralCode')
+      .populate('assignedAgent', 'name role phone email isActive')
+      .lean();
 
     res.json({
       success: true,
       message: `Lead status updated to ${status}`,
-      data: lead,
+      data: updated,
       ...(warning && { warning }),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/admin/lead/create — manual lead entry (no userId, no booking coins)
+exports.createLeadManual = async (req, res, next) => {
+  try {
+    const {
+      name,
+      phone,
+      email,
+      address,
+      propertyType,
+      roofArea,
+      preferredDate,
+      timeSlot,
+      source,
+      assignedAgent,
+      initialNote,
+    } = req.body;
+
+    if (!name || String(name).trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required (minimum 3 characters)',
+      });
+    }
+    if (!phone || !/^\d{10}$/.test(String(phone))) {
+      return res.status(400).json({ success: false, message: 'Valid 10-digit phone required' });
+    }
+
+    const leadSource = source && LEAD_SOURCES.includes(String(source)) ? String(source) : 'manual';
+    if (source && !LEAD_SOURCES.includes(String(source))) {
+      return res.status(400).json({
+        success: false,
+        message: `source must be one of: ${LEAD_SOURCES.join(', ')}`,
+      });
+    }
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const duplicate = await Lead.findOne({
+      phone: String(phone),
+      status: { $nin: ['lost', 'voided'] },
+      createdAt: { $gte: thirtyDaysAgo },
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        message: 'This phone already has an active visit booked in the last 30 days',
+      });
+    }
+
+    const adminName = req.admin?.name || 'Admin';
+    const followUps = [];
+    let nextFollowUpDate;
+
+    if (initialNote && String(initialNote).trim()) {
+      followUps.push({
+        note: String(initialNote).trim(),
+        status: 'called',
+        createdBy: adminName,
+        createdAt: new Date(),
+      });
+    }
+
+    const leadData = {
+      userId: null,
+      name: String(name).trim(),
+      phone: String(phone),
+      email: email ? String(email).trim() : '',
+      address: address && String(address).trim().length >= 10 ? String(address).trim() : 'Address pending',
+      propertyType: propertyType || 'Residential',
+      roofArea: roofArea != null && roofArea !== '' ? Number(roofArea) : undefined,
+      preferredDate: preferredDate || undefined,
+      timeSlot: timeSlot || undefined,
+      source: leadSource,
+      leadType: leadSource === 'referral' ? 'referral' : 'self',
+      status: 'pending',
+      followUps,
+      createdByAdmin: adminName,
+      nextFollowUpDate,
+    };
+
+    if (assignedAgent) {
+      if (!mongoose.Types.ObjectId.isValid(assignedAgent)) {
+        return res.status(400).json({ success: false, message: 'Invalid agent id' });
+      }
+      const agent = await Agent.findOne({ _id: assignedAgent, isActive: true });
+      if (!agent) {
+        return res.status(400).json({ success: false, message: 'Agent not found or inactive' });
+      }
+      leadData.assignedAgent = agent._id;
+    }
+
+    const lead = await Lead.create(leadData);
+
+    try {
+      await resolveCustomerForLead(lead);
+    } catch (linkErr) {
+      console.warn('[createLeadManual] App user link skipped:', linkErr.message);
+    }
+
+    const populated = await Lead.findById(lead._id)
+      .populate('userId', 'name phone referralCode')
+      .populate('assignedAgent', 'name role phone email isActive')
+      .lean();
+
+    res.status(201).json({
+      success: true,
+      message: 'Lead created',
+      data: populated,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/admin/lead/:id/followup
+exports.addLeadFollowUp = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { note, status, nextFollowUpDate, createdBy } = req.body;
+
+    if (!note || !String(note).trim()) {
+      return res.status(400).json({ success: false, message: 'Note is required' });
+    }
+
+    const followStatus =
+      status && FOLLOW_UP_STATUSES.includes(String(status)) ? String(status) : 'called';
+
+    const lead = await Lead.findById(id);
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    const entry = {
+      note: String(note).trim(),
+      status: followStatus,
+      createdBy: createdBy || req.admin?.name || 'Admin',
+      createdAt: new Date(),
+    };
+
+    if (nextFollowUpDate) {
+      entry.nextFollowUpDate = new Date(nextFollowUpDate);
+    }
+
+    lead.followUps.push(entry);
+    lead.lastFollowUpAt = new Date();
+
+    if (nextFollowUpDate) {
+      lead.nextFollowUpDate = new Date(nextFollowUpDate);
+    }
+
+    await lead.save();
+
+    await logActivity({
+      req,
+      action: 'lead_followup',
+      entityType: 'Lead',
+      entityId: lead._id,
+      meta: { status: followStatus },
+    });
+
+    const updated = await Lead.findById(id)
+      .populate('userId', 'name phone referralCode')
+      .populate('assignedAgent', 'name role phone email isActive')
+      .lean();
+
+    res.json({
+      success: true,
+      message: 'Follow-up logged',
+      data: updated,
     });
   } catch (error) {
     next(error);
@@ -293,7 +785,7 @@ exports.createLeadAdmin = async (req, res, next) => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const duplicate = await Lead.findOne({
       phone: String(phone),
-      status: { $ne: 'lost' },
+      status: { $nin: ['lost', 'voided'] },
       createdAt: { $gte: thirtyDaysAgo },
     });
     if (duplicate) {
@@ -740,15 +1232,38 @@ exports.putCoinSettingsAdmin = async (req, res, next) => {
   try {
     const updates = {};
     for (const k of ALL_ADMIN_SETTING_KEYS) {
-      if (req.body[k] === undefined || req.body[k] === null || req.body[k] === '') {
+      if (req.body[k] === undefined || req.body[k] === null) {
         continue;
       }
-      if (k === 'supportWhatsApp' || k === 'supportPhone') {
-        const digits = String(req.body[k]).replace(/\D/g, '').slice(-10);
-        if (!/^\d{10}$/.test(digits)) {
-          return res.status(400).json({ success: false, message: `${k} must be a 10-digit number` });
+      if (
+        k === 'notifyLeadStatusPush' ||
+        k === 'notifyProjectStagePush' ||
+        k === 'notifyCoinRedemptionPush' ||
+        k === 'customerDocumentsEnabled' ||
+        k === 'internalDocumentsEnabled' ||
+        k === 'reelsEnabled'
+      ) {
+        updates[k] = Boolean(req.body[k]);
+        continue;
+      }
+      if (
+        k.startsWith('company') ||
+        k.startsWith('brand') ||
+        k === 'supportWhatsApp' ||
+        k === 'supportPhone'
+      ) {
+        if (k === 'supportWhatsApp' || k === 'supportPhone') {
+          const digits = String(req.body[k]).replace(/\D/g, '').slice(-10);
+          if (!/^\d{10}$/.test(digits)) {
+            return res.status(400).json({ success: false, message: `${k} must be a 10-digit number` });
+          }
+          updates[k] = digits;
+        } else {
+          updates[k] = String(req.body[k]).trim();
         }
-        updates[k] = digits;
+        continue;
+      }
+      if (req.body[k] === '') {
         continue;
       }
       const n = Number(req.body[k]);

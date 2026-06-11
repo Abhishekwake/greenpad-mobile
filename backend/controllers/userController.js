@@ -1,18 +1,63 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Lead = require('../models/Lead');
+const Project = require('../models/Project');
+const { linkUserToLeadsByPhone } = require('../utils/linkUserToLeadsByPhone');
 
 // GET /api/user/dashboard
+const SITE_VISIT_LABELS = {
+  pending: 'Site visit scheduled',
+  contacted: 'We will contact you soon',
+  visited: 'Site visit completed',
+  converted: 'Approved — installation starting',
+  lost: 'Visit closed',
+};
+
 exports.getDashboard = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    await linkUserToLeadsByPhone(req.user);
 
-    const [user, recentTransactions, leadCount, referralCount] = await Promise.all([
-      User.findById(userId).select('name phone coins totalEarned totalRedeemed referralCode'),
-      Transaction.find({ userId }).sort({ createdAt: -1 }).limit(5).lean(),
-      Lead.countDocuments({ userId }),
-      User.countDocuments({ referredBy: req.user.referralCode }),
-    ]);
+    const phone = String(req.user.phone || '').trim();
+    const leadFilter = /^\d{10}$/.test(phone)
+      ? { status: { $ne: 'voided' }, $or: [{ userId }, { phone }] }
+      : { userId, status: { $ne: 'voided' } };
+
+    const [user, recentTransactions, leadCount, referralCount, latestLead, project] =
+      await Promise.all([
+        User.findById(userId).select('name phone coins totalEarned totalRedeemed referralCode'),
+        Transaction.find({ userId }).sort({ createdAt: -1 }).limit(5).lean(),
+        Lead.countDocuments(leadFilter),
+        User.countDocuments({ referredBy: req.user.referralCode }),
+        Lead.findOne(leadFilter).sort({ updatedAt: -1 }).lean(),
+        Project.findOne({ customerId: userId, status: { $ne: 'voided' } })
+          .select('status currentStageId')
+          .lean(),
+      ]);
+
+    let projectSummary = null;
+    if (project) {
+      projectSummary = { status: project.status, hasProject: true };
+    } else if (latestLead) {
+      const byLead = await Project.findOne({
+        leadId: latestLead._id,
+        status: { $ne: 'voided' },
+      })
+        .select('status')
+        .lean();
+      if (byLead) projectSummary = { status: byLead.status, hasProject: true };
+    }
+
+    const siteVisit = latestLead
+      ? {
+          leadId: String(latestLead._id),
+          status: latestLead.status,
+          statusLabel: SITE_VISIT_LABELS[latestLead.status] || latestLead.status,
+          preferredDate: latestLead.preferredDate,
+          timeSlot: latestLead.timeSlot,
+          source: latestLead.source || 'mobile',
+        }
+      : null;
 
     res.json({
       success: true,
@@ -29,6 +74,8 @@ exports.getDashboard = async (req, res, next) => {
           totalReferrals: referralCount,
           totalLeads: leadCount,
         },
+        siteVisit,
+        project: projectSummary,
         recentTransactions,
       },
     });

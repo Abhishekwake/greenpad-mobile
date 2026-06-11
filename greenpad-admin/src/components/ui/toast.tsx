@@ -32,9 +32,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const toast = React.useCallback(
     (message: string, variant: ToastVariant = "default") => {
-      const id = ++idRef.current;
-      setItems((prev) => [...prev, { id, message, variant }]);
-      setTimeout(() => remove(id), 4000);
+      setItems((prev) => {
+        if (prev.some((t) => t.message === message && t.variant === variant)) {
+          return prev;
+        }
+        const id = ++idRef.current;
+        setTimeout(() => remove(id), 4000);
+        return [...prev, { id, message, variant }];
+      });
     },
     [remove]
   );
