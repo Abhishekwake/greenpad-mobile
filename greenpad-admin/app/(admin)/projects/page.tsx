@@ -452,7 +452,7 @@ export default function ProjectsPage() {
 
   const detailProject = projectDetail ?? selectedProject;
 
-  if (selectedProject) {
+  if (selectedProject && detailProject) {
     const phases =
       detailProject.phases && detailProject.phases.length > 0
         ? detailProject.phases
