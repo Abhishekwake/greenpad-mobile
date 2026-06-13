@@ -664,9 +664,7 @@ export default function ProjectsPage() {
               type="button"
               size="sm"
               variant="outline"
-              disabled={
-                stageMutation.isPending || stage.status === "active" || stage.status === "done"
-              }
+              disabled={stageMutation.isPending || stage.status === "active"}
               onClick={() => handleStageAction(detailProject, stage, "active")}
             >
               Mark active
@@ -675,11 +673,7 @@ export default function ProjectsPage() {
               type="button"
               size="sm"
               variant="outline"
-              disabled={
-                stageMutation.isPending ||
-                stage.status === "pending" ||
-                stage.status === "done"
-              }
+              disabled={stageMutation.isPending || stage.status === "pending"}
               onClick={() => handleStageAction(detailProject, stage, "pending")}
             >
               Mark not active
@@ -689,7 +683,7 @@ export default function ProjectsPage() {
               size="sm"
               variant="outline"
               className="border-green-200 text-green-800 hover:bg-green-50"
-              disabled={stageMutation.isPending || stage.status === "done"}
+              disabled={stageMutation.isPending}
               onClick={() => handleStageAction(detailProject, stage, "done")}
             >
               Mark done
