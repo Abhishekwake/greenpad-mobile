@@ -258,7 +258,7 @@ export function CoinRulesTab() {
                     min={field.min ?? 0}
                     max={field.max ?? 500000}
                     className="max-w-xs"
-                    value={form[field.key]}
+                    value={form[field.key] as number}
                     onChange={(e) => {
                       const v = e.target.value === "" ? 0 : Number(e.target.value);
                       setForm((prev) =>

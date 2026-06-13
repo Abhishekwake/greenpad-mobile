@@ -708,7 +708,7 @@ export function LeadDetailsDrawer({
         description="This enquiry will be removed from active lists. It is not permanently deleted — you can still find it under the Voided filter."
         confirmLabel="Void site visit"
         isPending={voidLeadMutation.isPending}
-        onConfirm={(reason) => voidLeadMutation.mutateAsync(reason)}
+        onConfirm={async (reason) => { await voidLeadMutation.mutateAsync(reason); }}
       />
       <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
